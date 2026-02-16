@@ -122,9 +122,11 @@ def media_proxy():
 def index():
     if not client.credentials.get("token"):
         return redirect(url_for('settings'))
-    
+
     try:
         workouts = client.get_user_workouts()
+        # Sort workouts from oldest to newest (so newest is closest to Calendar section)
+        workouts.sort(key=lambda w: w.get('id', 0))
     except Exception as e:
         if str(e) == "Unauthorized":
             client.logout()
@@ -132,7 +134,7 @@ def index():
             return redirect(url_for('settings'))
         flash("Error loading workouts. Invalid token?", "error")
         workouts = []
-    
+
     unit = client.credentials.get('unit', 0)
     return render_template('index.html', workouts=workouts, unit=unit)
 
