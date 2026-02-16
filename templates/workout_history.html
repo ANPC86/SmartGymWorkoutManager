@@ -69,6 +69,10 @@
                 <button onclick="closeExport()" class="text-gray-400 hover:text-white text-sm px-3 py-2">
                     Close
                 </button>
+                <button onclick="downloadExportFile()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-bold text-sm flex items-center gap-2 shadow-lg hover:shadow-blue-900/50 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                    Download File
+                </button>
                 <button onclick="copyExportArea()" class="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded font-bold text-sm flex items-center gap-2 shadow-lg hover:shadow-green-900/50 transition">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
                     Copy to Clipboard
@@ -172,9 +176,14 @@
                 <td class="px-6 py-4 text-center text-gray-300">${item.totalCapacity || 0}</td>
                 <td class="px-6 py-4 text-center text-gray-300">${durationMin} min</td>
                 <td class="px-6 py-4 text-right">
-                    <button onclick="copyDetail('${exportId}', '${type}')" class="text-blue-400 hover:text-white text-xs font-bold border border-blue-900/50 hover:border-blue-500 bg-blue-900/20 px-3 py-1 rounded transition">
-                        Copy JSON
-                    </button>
+                    <div class="flex gap-2 justify-end">
+                        <button onclick="downloadDetail('${exportId}', '${type}')" class="text-green-400 hover:text-white text-xs font-bold border border-green-900/50 hover:border-green-500 bg-green-900/20 px-3 py-1 rounded transition">
+                            Download
+                        </button>
+                        <button onclick="copyDetail('${exportId}', '${type}')" class="text-blue-400 hover:text-white text-xs font-bold border border-blue-900/50 hover:border-blue-500 bg-blue-900/20 px-3 py-1 rounded transition">
+                            Copy
+                        </button>
+                    </div>
                 </td>
             `;
             tbody.appendChild(row);
@@ -198,6 +207,35 @@
             const data = await res.json();
             copyToClipboard(JSON.stringify(data, null, 2));
             alert("Detailed JSON copied to clipboard!");
+        } catch (e) {
+            alert("Failed to fetch detail: " + e);
+        }
+    }
+
+    // 2b. Fetch Single Detail and Download as File
+    async function downloadDetail(id, type) {
+        if (!id || id === 'undefined') {
+            alert("Error: No trainingId found for this record.");
+            return;
+        }
+        try {
+            const res = await fetch(`/api/workout_history/detail/${id}?type=${type}`);
+            const data = await res.json();
+
+            // Create filename using training ID
+            const filename = `training-record-${id}.json`;
+            const content = JSON.stringify(data, null, 2);
+
+            // Create and download the file
+            const blob = new Blob([content], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
         } catch (e) {
             alert("Failed to fetch detail: " + e);
         }
@@ -281,6 +319,31 @@
 
     function closeExport() {
         document.getElementById('export-container').classList.add('hidden');
+    }
+
+    function downloadExportFile() {
+        const textarea = document.getElementById('export-textarea');
+        const content = textarea.value;
+
+        // Create a timestamp for the filename
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5); // Format: YYYY-MM-DDTHH-MM-SS
+        const filename = `workout-history-export-${timestamp}.json`;
+
+        // Create a Blob with the JSON content
+        const blob = new Blob([content], { type: 'application/json' });
+
+        // Create a download link and trigger it
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+
+        // Cleanup
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     }
 
     function copyToClipboard(text) {
