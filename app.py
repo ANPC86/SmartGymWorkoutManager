@@ -583,6 +583,48 @@ def delete(id):
     flash("Workout deleted.", "info")
     return redirect(url_for('index'))
 
+@app.route('/workout_history')
+def workout_history():
+    if not client.credentials.get("token"): return redirect(url_for('settings'))
+    return render_template('workout_history.html')
+
+@app.route('/api/workout_history', methods=['GET'])
+def api_workout_history():
+    start = request.args.get('start')
+    end = request.args.get('end')
+    if not start or not end:
+        return jsonify({"error": "Missing dates"}), 400
+
+    try:
+        data = client.get_training_history(start, end)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/workout_history/detail/<path:record_id>')
+def api_workout_history_detail(record_id):
+    training_type = request.args.get('type', default=2, type=int)
+
+    if training_type == 5:
+        target_url = f"{client.base_url}/api/app/trainingInfo/cttTrainingInfoDetail/{record_id}"
+    else:
+        target_url = f"{client.base_url}/api/app/trainingInfo/courseTrainingInfoDetail/{record_id}"
+
+    try:
+        headers = client._get_headers()
+        response = requests.get(target_url, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({
+                "error": f"Speediance API Error: {response.status_code}",
+                "url": target_url,
+                "type_requested": training_type
+            }), response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 class TextRedirector(object):
     def __init__(self, widget, tag="stdout"):
         self.widget = widget

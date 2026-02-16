@@ -16,6 +16,29 @@ class SpeedianceClient:
         self.library_cache = self._load_library_cache()
         self.last_debug_info = {}
 
+    def _get_tz_headers(self):
+        """Best-effort Timezone / UTC offset headers similar to the mobile app."""
+        # Prefer Docker/OS TZ if set (e.g. 'America/Edmonton')
+        tz_name = os.environ.get("TZ") or (time.tzname[0] if time.tzname else "GMT")
+
+        # Compute local UTC offset in ±HHMM
+        # time.timezone / time.altzone are seconds WEST of UTC (positive in North America)
+        if time.localtime().tm_isdst and time.daylight:
+            offset_seconds = -time.altzone
+        else:
+            offset_seconds = -time.timezone
+
+        sign = "+" if offset_seconds >= 0 else "-"
+        offset_seconds = abs(offset_seconds)
+        hh = offset_seconds // 3600
+        mm = (offset_seconds % 3600) // 60
+        utc_offset = f"{sign}{hh:02d}{mm:02d}"
+
+        return {
+            "Timezone": tz_name,
+            "Utc_offset": utc_offset
+        }
+
     def _get_library_cache_file(self):
         allow_flag = 1 if self.allow_monster_moves else 0
         return f"library_cache_v2_device{self.device_type}_allow{allow_flag}.json"
@@ -137,10 +160,9 @@ class SpeedianceClient:
             "User-Agent": "Dart/3.9 (dart:io)",
             "Content-Type": "application/json",
             "Timestamp": str(int(time.time() * 1000)),
-            "Utc_offset": "+0000",
+            **self._get_tz_headers(),
             "Versioncode": "40304",
             "Mobiledevices": '{"brand":"google","device":"emulator64_x86_64_arm64","deviceType":"sdk_gphone64_x86_64","os":"","os_version":"31","manufacturer":"Google"}',
-            "Timezone": "GMT",
             "Accept-Language": "en",
             "App_type": "SOFTWARE",
             "Connection": "keep-alive",
@@ -220,6 +242,7 @@ class SpeedianceClient:
             "App_user_id": self.credentials.get("user_id", ""),
             "Token": self.credentials.get("token", ""),
             "Timestamp": str(int(time.time() * 1000)),
+            **self._get_tz_headers(),
             "Versioncode": "40304",
             "Mobiledevices": '{"brand":"google","device":"emulator64_x86_64_arm64","deviceType":"sdk_gphone64_x86_64","os":"","os_version":"31","manufacturer":"Google"}',
             "Content-Type": "application/json",
@@ -441,6 +464,32 @@ class SpeedianceClient:
             if str(e) == "Unauthorized": raise e
             print(f"Error scheduling workout: {e}")
             return False
+
+    def get_training_history(self, start_date, end_date):
+        """
+        Fetches the list of training records between two dates.
+        Dates should be in 'YYYY-MM-DD' format.
+        """
+        url = f"{self.base_url}/api/mobile/v2/report/userTrainingDataRecord?startDate={start_date}&endDate={end_date}"
+        try:
+            resp = self._request('GET', url, headers=self._get_headers())
+            return resp.json().get('data', [])
+        except Exception as e:
+            print(f"Error fetching history: {e}")
+            return []
+
+    def get_training_detail(self, training_id):
+        """
+        Fetches the full details (sets, reps, graphs) for a specific workout ID.
+        """
+        # Based on typical Speediance patterns, the ID is usually a query parameter
+        url = f"{self.base_url}/api/app/trainingInfo/cttTrainingInfoDetail/{training_id}"
+        try:
+            resp = self._request('GET', url, headers=self._get_headers())
+            return resp.json().get('data', {})
+        except Exception as e:
+            print(f"Error fetching training detail: {e}")
+            return {}
 
     def save_workout(self, name, exercises, template_id=None): 
         """
