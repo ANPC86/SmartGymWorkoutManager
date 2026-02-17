@@ -466,7 +466,7 @@ class SpeedianceClient:
         for ex in exercises:
             group_id = int(ex['groupId'])
             sets = ex['sets']
-            preset_id = int(ex.get('preset_id', -1))
+            preset_id = int(ex.get('preset_id') or -1)
             
             is_unilateral = unilateral_check.get(group_id, False)
 
@@ -491,10 +491,10 @@ class SpeedianceClient:
             set_capacity = 0
 
             for i, s in enumerate(sets):
-                reps = int(s.get('reps', 0))
-                weight_val = float(s.get('weight', 0))
-                mode = int(s.get('mode', 1))
-                rest = int(s.get('rest', 60))
+                reps = int(s.get('reps') or 0)
+                weight_val = float(s.get('weight') or 0)
+                mode = int(s.get('mode') or 1)
+                rest = int(s.get('rest') or 60)
                 unit = str(s.get('unit', 'reps')).lower()
 
                 # Unilateral Logic

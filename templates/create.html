@@ -322,7 +322,7 @@
             
             const setsParsed = reps.map((rep, i) => {
                 let w = 0;
-                const presetId = parseInt(apiEx.templatePresetId);
+                const presetId = parseInt(apiEx.templatePresetId) || -1;
                 const isRM = presetId !== -1;
                 
                 if (isRM) {
@@ -354,7 +354,7 @@
                 variants: meta.variants,
                 presets: meta.presets,
                 selectedVariantId: parseInt(apiEx.actionLibraryId),
-                selectedPresetId: parseInt(apiEx.templatePresetId),
+                selectedPresetId: parseInt(apiEx.templatePresetId) || -1,
                 sets: setsParsed,
                 cablePosition: meta.cablePosition  // For display only
             });
@@ -884,7 +884,7 @@ You must output a JSON object with the following structure:
                         variants: meta.variants,
                         presets: meta.presets,
                         selectedVariantId: meta.variants?.[0]?.id || groupId, // Default to first variant
-                        selectedPresetId: parseInt(ex.presetId),
+                        selectedPresetId: parseInt(ex.presetId) || -1,
                         sets: finalSets,
                         cablePosition: meta.cablePosition  // For display only
                     });
