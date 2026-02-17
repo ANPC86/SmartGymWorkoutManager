@@ -285,10 +285,11 @@
             return {
                 variants: details.actionLibraryList || [],
                 presets: details.templatePresetList || [],
-                isUnilateral: details.isLeftRight === 1 
+                isUnilateral: details.isLeftRight === 1,
+                cablePosition: details.outPosition  // For display only
             };
         } catch (e) {
-            return { variants: [], presets: [], isUnilateral: false };
+            return { variants: [], presets: [], isUnilateral: false, cablePosition: null };
         }
     }
 
@@ -346,15 +347,16 @@
 
             workoutData.push({
                 internalId: Date.now() + Math.random(),
-                groupId: parseInt(groupId), 
+                groupId: parseInt(groupId),
                 title: apiEx.title,
                 img: apiEx.img,
-                isUnilateral: meta.isUnilateral, 
-                variants: meta.variants, 
-                presets: meta.presets, 
+                isUnilateral: meta.isUnilateral,
+                variants: meta.variants,
+                presets: meta.presets,
                 selectedVariantId: parseInt(apiEx.actionLibraryId),
                 selectedPresetId: parseInt(apiEx.templatePresetId),
-                sets: setsParsed
+                sets: setsParsed,
+                cablePosition: meta.cablePosition  // For display only
             });
         }
         renderBuilder();
@@ -384,16 +386,17 @@
             }
 
             const newEx = {
-                internalId: tempId, 
+                internalId: tempId,
                 groupId: groupId,
                 title: title,
                 img: img,
-                isUnilateral: meta.isUnilateral, 
-                variants: meta.variants, 
+                isUnilateral: meta.isUnilateral,
+                variants: meta.variants,
                 presets: meta.presets,
                 selectedVariantId: meta.variants?.[0]?.id || groupId,
                 selectedPresetId: -1, // Custom Default
-                sets: startSets
+                sets: startSets,
+                cablePosition: meta.cablePosition  // For display only
             };
             
             workoutData.push(newEx);
@@ -469,12 +472,26 @@
 
             const unilateralWarning = ex.isUnilateral ? `<p class="text-xs text-yellow-400 mt-1">Unilateral: L/R Sets</p>` : '';
 
+            // Format cable position display
+            let cablePositionHtml = '';
+            if (ex.cablePosition !== null && ex.cablePosition !== undefined) {
+                let posLabel = '';
+                if (ex.cablePosition == 10) {
+                    posLabel = 'Platform';
+                } else if (ex.cablePosition == 0) {
+                    posLabel = 'Top';
+                } else {
+                    posLabel = String(ex.cablePosition).padStart(2, '0');
+                }
+                cablePositionHtml = `<span class="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded text-xs font-mono font-bold">Cable: ${posLabel}</span>`;
+            }
+
             card.innerHTML = `
                 <div class="p-4 bg-gray-800 border-b border-gray-700 flex gap-4 items-start">
                     <img src="${ex.img}" class="w-16 h-16 rounded object-cover bg-black">
                     <div class="flex-grow">
                         <div class="flex justify-between">
-                            <div class="flex items-center gap-2">
+                            <div class="flex items-center gap-2 flex-wrap">
                                 <h3 class="font-bold text-lg text-white">${ex.title}</h3>
                                 <a href="/exercise/${ex.groupId}" target="_blank" class="text-gray-400 hover:text-blue-400 transition" title="Show Details">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -490,9 +507,10 @@
                                 <button onclick="removeEx(${exIndex})" class="text-red-500 hover:text-red-400 text-sm ml-2">✖ Remove</button>
                             </div>
                         </div>
-                        <div class="flex gap-3 mt-2">
+                        <div class="flex gap-3 mt-2 items-center">
                             <select onchange="updateEx(${exIndex}, 'selectedVariantId', this.value)" class="bg-gray-900 text-xs text-white border border-gray-600 rounded p-1 max-w-[150px]">${variantsHtml}</select>
                             <select onchange="updateEx(${exIndex}, 'selectedPresetId', this.value)" class="bg-gray-900 text-xs text-green-400 border border-gray-600 rounded p-1 font-bold">${presetsHtml}</select>
+                            ${cablePositionHtml}
                         </div>
                         ${unilateralWarning}
                     </div>
@@ -629,12 +647,32 @@
         };
         
         const jsonStr = JSON.stringify(exportObj, null, 2);
-        navigator.clipboard.writeText(jsonStr).then(() => {
-            alert("Workout JSON copied to clipboard!");
-        }).catch(err => {
-            console.error('Failed to copy: ', err);
-            alert("Failed to copy to clipboard. Check console.");
-        });
+
+        // Try modern clipboard API first, fallback to older method
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(jsonStr).then(() => {
+                alert("Workout JSON copied to clipboard!");
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                alert("Failed to copy to clipboard. Check console.");
+            });
+        } else {
+            // Fallback for browsers/contexts without clipboard API
+            const textarea = document.createElement('textarea');
+            textarea.value = jsonStr;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                alert("Workout JSON copied to clipboard!");
+            } catch (err) {
+                console.error('Failed to copy: ', err);
+                alert("Failed to copy to clipboard. Check console.");
+            }
+            document.body.removeChild(textarea);
+        }
     };
 
     window.moveEx = (index, direction) => {
@@ -847,7 +885,8 @@ You must output a JSON object with the following structure:
                         presets: meta.presets,
                         selectedVariantId: meta.variants?.[0]?.id || groupId, // Default to first variant
                         selectedPresetId: parseInt(ex.presetId),
-                        sets: finalSets
+                        sets: finalSets,
+                        cablePosition: meta.cablePosition  // For display only
                     });
                 }
                 renderBuilder();
