@@ -207,10 +207,18 @@
         },
         '5': { // Strength
             label: "RM", step: 1,
-            defW: 7, minW: 4, maxW: 9, 
-            defR: 6, minR: 2, maxR: 8, 
-            defRest: 90, minRest: 60, maxRest: 180 
+            defW: 7, minW: 4, maxW: 9,
+            defR: 6, minR: 2, maxR: 8,
+            defRest: 90, minRest: 60, maxRest: 180
         }
+    };
+
+    // Human-readable labels for known preset IDs (used for dynamic dropdown)
+    const PRESET_LABELS = {
+        '-1': 'Customize (KG)',
+        '1': 'Gain Muscle (RM)',
+        '3': 'Stamina (RM)',
+        '5': 'Strength (RM)'
     };
 
     let workoutData = [];
@@ -409,7 +417,13 @@
 
     // --- HELPER ---
     function getRules(ex) {
-        let rules = PRESET_RULES[ex.selectedPresetId] || PRESET_RULES['-1'];
+        let rules = PRESET_RULES[ex.selectedPresetId];
+        if (!rules) {
+            // Unknown preset ID (e.g. cardio/API-specific) — generic RM fallback
+            rules = (ex.selectedPresetId == null || isNaN(ex.selectedPresetId) || ex.selectedPresetId == -1)
+                ? PRESET_RULES['-1']
+                : { label: "RM", step: 1, defW: 13, minW: 1, maxW: 20, defR: 10, minR: 1, maxR: 99, defRest: 60, minRest: 0, maxRest: 300 };
+        }
         // Adjust limits for Custom (KG) based on Unilateral/Bilateral
         if (ex.selectedPresetId == -1) {
             rules = {...rules}; // Clone
@@ -439,6 +453,29 @@
         return rules;
     }
 
+    // Build preset dropdown from API data (ex.presets = templatePresetList)
+    function buildPresetsHtml(ex) {
+        const options = [];
+        options.push(`<option value="-1" ${ex.selectedPresetId == -1 ? 'selected' : ''}>Customize (KG)</option>`);
+
+        const apiPresets = ex.presets || [];
+        if (apiPresets.length > 0) {
+            apiPresets.forEach(p => {
+                // API may use different field names — try the most common ones
+                const pid = p.id ?? p.templatePresetId ?? p.presetId;
+                if (pid == null || pid == -1) return; // skip custom (already added)
+                const label = PRESET_LABELS[String(pid)] || p.name || p.templatePresetName || `Preset ${pid}`;
+                options.push(`<option value="${pid}" ${ex.selectedPresetId == pid ? 'selected' : ''}>${label}</option>`);
+            });
+        } else {
+            // No API presets returned — show standard fallback options
+            options.push(`<option value="1" ${ex.selectedPresetId == 1 ? 'selected' : ''}>Gain Muscle (RM)</option>`);
+            options.push(`<option value="3" ${ex.selectedPresetId == 3 ? 'selected' : ''}>Stamina (RM)</option>`);
+            options.push(`<option value="5" ${ex.selectedPresetId == 5 ? 'selected' : ''}>Strength (RM)</option>`);
+        }
+        return options.join('');
+    }
+
     // --- RENDER UI ---
     function renderBuilder() {
         const container = document.getElementById('builder-area');
@@ -463,12 +500,7 @@
                 `<option value="${v.id}" ${v.id == ex.selectedVariantId ? 'selected' : ''}>Coach ${v.coach ? v.coach.name : 'Standard'}</option>`
             ).join('');
 
-            let presetsHtml = `
-                <option value="-1" ${ex.selectedPresetId == -1 ? 'selected' : ''}>Customize (KG)</option>
-                <option value="1" ${ex.selectedPresetId == 1 ? 'selected' : ''}>Gain Muscle (RM)</option>
-                <option value="3" ${ex.selectedPresetId == 3 ? 'selected' : ''}>Stamina (RM)</option>
-                <option value="5" ${ex.selectedPresetId == 5 ? 'selected' : ''}>Strength (RM)</option>
-            `;
+            const presetsHtml = buildPresetsHtml(ex);
 
             const unilateralWarning = ex.isUnilateral ? `<p class="text-xs text-yellow-400 mt-1">Unilateral: L/R Sets</p>` : '';
 
@@ -544,15 +576,19 @@
                                 setDisplay = sIdx + 1;
                             }
 
+                            // Time-aware limits: when unit is 'sec', allow up to 3600 seconds
+                            const repMin = set.unit === 'sec' ? 1 : rules.minR;
+                            const repMax = set.unit === 'sec' ? 3600 : rules.maxR;
+
                             return `
                             <div class="grid grid-cols-12 gap-2 items-center bg-gray-800/50 rounded p-1">
                                 <div class="col-span-1 text-center text-gray-400 font-mono flex justify-center items-center">${sideLabel}${setDisplay}</div>
-                                
+
                                 <div class="col-span-3 flex gap-1">
-                                    <input type="number" 
-                                           min="${rules.minR}" max="${rules.maxR}" step="1"
-                                           value="${set.reps}" 
-                                           onchange="validateAndSet(${exIndex}, ${sIdx}, 'reps', this)" 
+                                    <input type="number"
+                                           min="${repMin}" max="${repMax}" step="1"
+                                           value="${set.reps}"
+                                           onchange="validateAndSet(${exIndex}, ${sIdx}, 'reps', this)"
                                            class="w-full bg-gray-700 text-white text-center rounded border border-gray-600 p-1">
                                     <button onclick="toggleUnit(${exIndex}, ${sIdx})" class="px-1 text-[10px] bg-gray-700 text-gray-400 rounded w-8 border border-gray-600">${set.unit === 'reps' ? 'Rep' : 'Sec'}</button>
                                 </div>
@@ -602,7 +638,11 @@
         // Grenzen prüfen
         let min = 0, max = 999;
         if(field === 'weight') { min = rules.minW; max = rules.maxW; }
-        if(field === 'reps') { min = rules.minR; max = rules.maxR; }
+        if(field === 'reps') {
+            // When unit is 'sec' (time mode), allow up to 3600 seconds regardless of preset limits
+            if (workoutData[exIdx].sets[sIdx].unit === 'sec') { min = 1; max = 3600; }
+            else { min = rules.minR; max = rules.maxR; }
+        }
         if(field === 'rest') { min = rules.minRest; max = rules.maxRest; }
 
         if (isNaN(val)) val = min;
