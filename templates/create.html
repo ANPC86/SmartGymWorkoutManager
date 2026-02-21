@@ -215,7 +215,7 @@
 
     // Human-readable labels for known preset IDs (used for dynamic dropdown)
     const PRESET_LABELS = {
-        '-1': 'Customize (KG)',
+        '-1': userUnit === 1 ? 'Customize (LBS)' : 'Customize (KG)',
         '1': 'Gain Muscle (RM)',
         '3': 'Stamina (RM)',
         '5': 'Strength (RM)'
@@ -456,7 +456,7 @@
     // Build preset dropdown from API data (ex.presets = templatePresetList)
     function buildPresetsHtml(ex) {
         const options = [];
-        options.push(`<option value="-1" ${ex.selectedPresetId == -1 ? 'selected' : ''}>Customize (KG)</option>`);
+        options.push(`<option value="-1" ${ex.selectedPresetId == -1 ? 'selected' : ''}>${PRESET_LABELS['-1']}</option>`);
 
         const apiPresets = ex.presets || [];
         if (apiPresets.length > 0) {
