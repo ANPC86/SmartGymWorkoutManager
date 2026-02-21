@@ -213,6 +213,8 @@
         }
     };
 
+    const userUnit = {{ unit | default(0) }}; // 0=Metric, 1=Imperial
+
     // Human-readable labels for known preset IDs (used for dynamic dropdown)
     const PRESET_LABELS = {
         '-1': userUnit === 1 ? 'Customize (LBS)' : 'Customize (KG)',
@@ -224,7 +226,6 @@
     let workoutData = [];
     const existingData = {{ existing_workout | default(None) | tojson | safe }};
     const fullLibrary = {{ library | tojson | safe }};
-    const userUnit = {{ unit | default(0) }}; // 0=Metric, 1=Imperial
     let currentTemplateId = existingData ? existingData.id : null;
 
     document.addEventListener('DOMContentLoaded', async () => {
