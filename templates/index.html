@@ -19,10 +19,8 @@
                 <h3 class="text-xl font-bold text-white mb-2 truncate pr-2">{{ w.name }}</h3>
                 <span class="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded">Drag me</span>
             </div>
-            <div class="text-sm text-gray-400 space-y-1">
-                <p>Volume: {{ w.totalCapacity }} {{ 'lbs' if unit == 1 else 'kg' }}</p>
-                <p>Duration: ~{{ w.durationMinute }} min</p>
-                <p>Exercises: {{ w.actionNum }}</p>
+            <div class="text-sm text-gray-400">
+                <p>{{ w.totalCapacity }} {{ 'lbs' if unit == 1 else 'kg' }} &bull; ~{{ w.durationMinute }} min &bull; {{ w.actionNum }} exercises</p>
             </div>
             <div class="mt-4 flex space-x-2">
                 <a href="/delete/{{ w.id }}" onclick="return confirm('Really delete?')" class="text-red-400 hover:text-red-300 text-sm">Delete</a>
@@ -192,7 +190,9 @@
         if (!daysData || daysData.length === 0) return;
 
         // Determine start day of the week (0=Sun, 1=Mon, etc.)
-        const firstDayDate = new Date(daysData[0].date);
+        // Parse as local date (not UTC) by using YYYY/MM/DD format
+        const [fy, fm, fd] = daysData[0].date.split('-').map(Number);
+        const firstDayDate = new Date(fy, fm - 1, fd);
         const startDay = firstDayDate.getDay();
 
         // Add empty cells for previous month days
@@ -202,7 +202,8 @@
             grid.appendChild(emptyCell);
         }
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
         daysData.forEach(day => {
             const cell = document.createElement('div');
@@ -214,8 +215,8 @@
             cell.setAttribute('ondragleave', 'dragLeave(event)');
             cell.dataset.date = day.date;
 
-            // Date number
-            const dateNum = new Date(day.date).getDate();
+            // Date number — parse as local date to avoid UTC offset issues
+            const dateNum = parseInt(day.date.split('-')[2], 10);
             cell.innerHTML = `<div class="text-right text-sm ${isToday ? 'text-blue-400 font-bold' : 'text-gray-400'} mb-1">${dateNum}</div>`;
 
             // Workouts list
