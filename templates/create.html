@@ -295,10 +295,12 @@
                 variants: details.actionLibraryList || [],
                 presets: details.templatePresetList || [],
                 isUnilateral: details.isLeftRight === 1,
-                cablePosition: details.outPosition  // For display only
+                cablePosition: details.outPosition,
+                completionMethod: details.completionMethod ?? null,
+                selectCompletionMethod: details.selectCompletionMethod ?? null
             };
         } catch (e) {
-            return { variants: [], presets: [], isUnilateral: false, cablePosition: null };
+            return { variants: [], presets: [], isUnilateral: false, cablePosition: null, completionMethod: null, selectCompletionMethod: null };
         }
     }
 
@@ -365,7 +367,9 @@
                 selectedVariantId: parseInt(apiEx.actionLibraryId),
                 selectedPresetId: parseInt(apiEx.templatePresetId) || -1,
                 sets: setsParsed,
-                cablePosition: meta.cablePosition  // For display only
+                cablePosition: meta.cablePosition,
+                completionMethod: meta.completionMethod,
+                selectCompletionMethod: meta.selectCompletionMethod
             });
         }
         renderBuilder();
@@ -405,7 +409,9 @@
                 selectedVariantId: meta.variants?.[0]?.id || groupId,
                 selectedPresetId: -1, // Custom Default
                 sets: startSets,
-                cablePosition: meta.cablePosition  // For display only
+                cablePosition: meta.cablePosition,
+                completionMethod: meta.completionMethod,
+                selectCompletionMethod: meta.selectCompletionMethod
             };
             
             workoutData.push(newEx);
@@ -452,6 +458,18 @@
             }
         }
         return rules;
+    }
+
+    // Determine the goal unit for an exercise based on its completionMethod from the API.
+    // Returns 'sec', 'kcal', 'reps', or null (null = fall back to per-set toggle).
+    function getSetGoalUnit(ex) {
+        const cm = ex.completionMethod;
+        const scm = String(ex.selectCompletionMethod ?? '');
+        if (cm === 0 && scm === '1') return 'sec';   // timed via selectCompletionMethod
+        if (cm === 1) return 'reps';
+        if (cm === 2) return 'sec';                  // Row/Ski timed
+        if (cm === 5) return 'kcal';                 // Vita burn-to-complete
+        return null;                                 // unknown — use set.unit toggle
     }
 
     // Build preset dropdown from API data (ex.presets = templatePresetList)
@@ -552,7 +570,7 @@
                 <div class="p-4">
                     <div class="grid grid-cols-12 gap-2 text-xs uppercase text-gray-500 font-bold mb-2 px-1">
                         <div class="col-span-1 text-center">#</div>
-                        <div class="col-span-3">Target (${rules.minR}-${rules.maxR})</div>
+                        <div class="col-span-3">${(() => { const u = getSetGoalUnit(ex); if (u === 'sec') return 'Target (sec)'; if (u === 'kcal') return 'Target (kcal)'; return `Target (${rules.minR}-${rules.maxR})`; })()}</div>
                         <div class="col-span-2">${rules.label} (${rules.minW}-${rules.maxW})</div>
                         <div class="col-span-3">Mode</div>
                         <div class="col-span-2">Rest (${rules.minRest}-${rules.maxRest}s)</div>
@@ -577,9 +595,16 @@
                                 setDisplay = sIdx + 1;
                             }
 
-                            // Time-aware limits: when unit is 'sec', allow up to 3600 seconds
-                            const repMin = set.unit === 'sec' ? 1 : rules.minR;
-                            const repMax = set.unit === 'sec' ? 3600 : rules.maxR;
+                            // Determine effective unit: API completionMethod takes priority, else per-set toggle
+                            const apiUnit = getSetGoalUnit(ex);
+                            const effectiveUnit = apiUnit !== null ? apiUnit : set.unit;
+                            const repMin = effectiveUnit === 'sec' ? 1 : effectiveUnit === 'kcal' ? 1 : rules.minR;
+                            const repMax = effectiveUnit === 'sec' ? 3600 : effectiveUnit === 'kcal' ? 9999 : rules.maxR;
+                            const unitLabel = effectiveUnit === 'sec' ? 'Sec' : effectiveUnit === 'kcal' ? 'Kcal' : 'Rep';
+                            // Show toggle button only when the API doesn't mandate a unit
+                            const unitBtn = apiUnit === null
+                                ? `<button onclick="toggleUnit(${exIndex}, ${sIdx})" class="px-1 text-[10px] bg-gray-700 text-gray-400 rounded w-8 border border-gray-600">${unitLabel}</button>`
+                                : `<span class="px-1 text-[10px] bg-gray-800 text-gray-500 rounded w-8 border border-gray-700 text-center">${unitLabel}</span>`;
 
                             return `
                             <div class="grid grid-cols-12 gap-2 items-center bg-gray-800/50 rounded p-1">
@@ -591,7 +616,7 @@
                                            value="${set.reps}"
                                            onchange="validateAndSet(${exIndex}, ${sIdx}, 'reps', this)"
                                            class="w-full bg-gray-700 text-white text-center rounded border border-gray-600 p-1">
-                                    <button onclick="toggleUnit(${exIndex}, ${sIdx})" class="px-1 text-[10px] bg-gray-700 text-gray-400 rounded w-8 border border-gray-600">${set.unit === 'reps' ? 'Rep' : 'Sec'}</button>
+                                    ${unitBtn}
                                 </div>
                                 <div class="col-span-2">
                                     <input type="number" 
@@ -640,8 +665,10 @@
         let min = 0, max = 999;
         if(field === 'weight') { min = rules.minW; max = rules.maxW; }
         if(field === 'reps') {
-            // When unit is 'sec' (time mode), allow up to 3600 seconds regardless of preset limits
-            if (workoutData[exIdx].sets[sIdx].unit === 'sec') { min = 1; max = 3600; }
+            const apiUnit = getSetGoalUnit(workoutData[exIdx]);
+            const effectiveUnit = apiUnit !== null ? apiUnit : workoutData[exIdx].sets[sIdx].unit;
+            if (effectiveUnit === 'sec')  { min = 1; max = 3600; }
+            else if (effectiveUnit === 'kcal') { min = 1; max = 9999; }
             else { min = rules.minR; max = rules.maxR; }
         }
         if(field === 'rest') { min = rules.minRest; max = rules.maxRest; }
@@ -920,14 +947,16 @@ You must output a JSON object with the following structure:
                         internalId: Date.now() + Math.random(),
                         groupId: parseInt(groupId),
                         title: title,
-                        img: meta.variants?.[0]?.img || (libEx ? libEx.img : ""), // Fallback image
+                        img: meta.variants?.[0]?.img || (libEx ? libEx.img : ""),
                         isUnilateral: meta.isUnilateral,
                         variants: meta.variants,
                         presets: meta.presets,
-                        selectedVariantId: meta.variants?.[0]?.id || groupId, // Default to first variant
+                        selectedVariantId: meta.variants?.[0]?.id || groupId,
                         selectedPresetId: parseInt(ex.presetId) || -1,
                         sets: finalSets,
-                        cablePosition: meta.cablePosition  // For display only
+                        cablePosition: meta.cablePosition,
+                        completionMethod: meta.completionMethod,
+                        selectCompletionMethod: meta.selectCompletionMethod
                     });
                 }
                 renderBuilder();
