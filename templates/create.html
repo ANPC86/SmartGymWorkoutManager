@@ -297,10 +297,11 @@
                 isUnilateral: details.isLeftRight === 1,
                 cablePosition: details.outPosition,
                 completionMethod: details.completionMethod ?? null,
-                selectCompletionMethod: details.selectCompletionMethod ?? null
+                selectCompletionMethod: details.selectCompletionMethod ?? null,
+                dataStatType: details.dataStatType ?? null
             };
         } catch (e) {
-            return { variants: [], presets: [], isUnilateral: false, cablePosition: null, completionMethod: null, selectCompletionMethod: null };
+            return { variants: [], presets: [], isUnilateral: false, cablePosition: null, completionMethod: null, selectCompletionMethod: null, dataStatType: null };
         }
     }
 
@@ -369,7 +370,8 @@
                 sets: setsParsed,
                 cablePosition: meta.cablePosition,
                 completionMethod: meta.completionMethod,
-                selectCompletionMethod: meta.selectCompletionMethod
+                selectCompletionMethod: meta.selectCompletionMethod,
+                dataStatType: meta.dataStatType
             });
         }
         renderBuilder();
@@ -411,9 +413,10 @@
                 sets: startSets,
                 cablePosition: meta.cablePosition,
                 completionMethod: meta.completionMethod,
-                selectCompletionMethod: meta.selectCompletionMethod
+                selectCompletionMethod: meta.selectCompletionMethod,
+                dataStatType: meta.dataStatType
             };
-            
+
             workoutData.push(newEx);
             renderBuilder();
             
@@ -571,7 +574,7 @@
                     <div class="grid grid-cols-12 gap-2 text-xs uppercase text-gray-500 font-bold mb-2 px-1">
                         <div class="col-span-1 text-center">#</div>
                         <div class="col-span-3">${(() => { const u = getSetGoalUnit(ex); if (u === 'sec') return 'Target (sec)'; if (u === 'kcal') return 'Target (kcal)'; return `Target (${rules.minR}-${rules.maxR})`; })()}</div>
-                        <div class="col-span-2">${rules.label} (${rules.minW}-${rules.maxW})</div>
+                        <div class="col-span-2">${ex.dataStatType === 6 ? 'Level (1-10)' : `${rules.label} (${rules.minW}-${rules.maxW})`}</div>
                         <div class="col-span-3">Mode</div>
                         <div class="col-span-2">Rest (${rules.minRest}-${rules.maxRest}s)</div>
                         <div class="col-span-1"></div>
@@ -619,10 +622,10 @@
                                     ${unitBtn}
                                 </div>
                                 <div class="col-span-2">
-                                    <input type="number" 
-                                           min="${rules.minW}" max="${rules.maxW}" step="${rules.step}"
-                                           value="${set.weight}" 
-                                           onchange="validateAndSet(${exIndex}, ${sIdx}, 'weight', this)" 
+                                    <input type="number"
+                                           min="${ex.dataStatType === 6 ? 1 : rules.minW}" max="${ex.dataStatType === 6 ? 10 : rules.maxW}" step="${ex.dataStatType === 6 ? 1 : rules.step}"
+                                           value="${set.weight}"
+                                           onchange="validateAndSet(${exIndex}, ${sIdx}, 'weight', this)"
                                            class="w-full bg-gray-700 ${ex.selectedPresetId != -1 ? 'text-yellow-400 font-bold' : 'text-white'} text-center rounded border border-gray-600 p-1">
                                 </div>
                                 <div class="col-span-3">
@@ -663,7 +666,10 @@
 
         // Grenzen prüfen
         let min = 0, max = 999;
-        if(field === 'weight') { min = rules.minW; max = rules.maxW; }
+        if(field === 'weight') {
+            min = ex.dataStatType === 6 ? 1 : rules.minW;
+            max = ex.dataStatType === 6 ? 10 : rules.maxW;
+        }
         if(field === 'reps') {
             const apiUnit = getSetGoalUnit(workoutData[exIdx]);
             const effectiveUnit = apiUnit !== null ? apiUnit : workoutData[exIdx].sets[sIdx].unit;
@@ -956,7 +962,8 @@ You must output a JSON object with the following structure:
                         sets: finalSets,
                         cablePosition: meta.cablePosition,
                         completionMethod: meta.completionMethod,
-                        selectCompletionMethod: meta.selectCompletionMethod
+                        selectCompletionMethod: meta.selectCompletionMethod,
+                        dataStatType: meta.dataStatType
                     });
                 }
                 renderBuilder();
@@ -1064,9 +1071,10 @@ You must output a JSON object with the following structure:
         if(workoutData.length === 0) return alert("Plan is empty!");
 
         const payloadExercises = workoutData.map(ex => ({
-            groupId: ex.groupId, 
+            groupId: ex.groupId,
             variant_id: ex.selectedVariantId,
             preset_id: ex.selectedPresetId,
+            data_stat_type: ex.dataStatType,
             sets: ex.sets.map(s => {
                 const newSet = {...s};
                 // If Imperial (1) and Custom Preset (-1), convert LBS -> KG before sending

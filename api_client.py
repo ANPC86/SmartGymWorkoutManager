@@ -467,6 +467,7 @@ class SpeedianceClient:
             group_id = int(ex['groupId'])
             sets = ex['sets']
             preset_id = int(ex.get('preset_id') or -1)
+            data_stat_type = int(ex.get('data_stat_type') or 0)
             
             is_unilateral = unilateral_check.get(group_id, False)
 
@@ -506,7 +507,12 @@ class SpeedianceClient:
                 reps_list.append(str(reps))
                 break_list.append(str(rest))
                 mode_list.append(str(mode))
-                level_list.append("0")
+
+                # Vita exercises (dataStatType==6): weight input = difficulty level (1-10)
+                if data_stat_type == 6:
+                    level_list.append(str(max(1, min(10, int(weight_val) or 1))))
+                else:
+                    level_list.append("0")
 
                 # Completion fields: required by API (observed in app payloads)
                 # - unit=='sec' => time-based completion
@@ -520,16 +526,17 @@ class SpeedianceClient:
                 completion_list.append("1")
 
                 # Weights vs counters
-                if preset_id == -1:
+                if data_stat_type == 6:
+                    # Vita: no cable weight, level already captured above
+                    weights_list.append("0")
+                elif preset_id == -1:
                     api_weight = weight_val * 2.2
                     weights_list.append(f"{api_weight:.1f}")
                     set_capacity += (reps * api_weight)
                 else:
                     # For presets, we MUST populate weights_list with dummy values (e.g. 3.5)
                     # AND populate counter_list with the RM value.
-                    # The API seems to drop counterweight2 if weights is empty or missing?
-                    # Or maybe it's just that we need to send weights even if unused.
-                    weights_list.append("3.5") 
+                    weights_list.append("3.5")
                     counter_list.append(str(int(weight_val)))
                     set_capacity += (reps * weight_val * 2.2)
 
