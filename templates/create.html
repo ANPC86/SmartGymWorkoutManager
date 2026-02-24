@@ -379,6 +379,7 @@
 
     // --- ADD EXERCISE ---
     async function addExerciseToPlan(groupId, title, img) {
+        groupId = parseInt(groupId, 10);
         const tempId = Date.now();
         try {
             const meta = await fetchExerciseMetadata(groupId);
