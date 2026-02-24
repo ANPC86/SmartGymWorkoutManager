@@ -2,7 +2,7 @@
 {% block content %}
 <!-- Workouts Section -->
 <div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold text-white">My Workouts</h1>
+    <h1 class="text-3xl font-bold text-white">My Workouts <span class="text-lg font-normal text-gray-400">({{ workouts | length }})</span></h1>
     <a href="/create" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow hover:shadow-lg transition">New Workout</a>
 </div>
 
