@@ -100,7 +100,15 @@
         <div class="mb-4 flex justify-between items-center border-b border-gray-700 pb-4">
             <input type="text" id="plan-name" placeholder="Workout name" class="text-2xl bg-transparent font-bold text-white outline-none w-1/2 placeholder-gray-600">
             <div class="flex gap-3">
-                <span id="total-stats" class="text-sm text-gray-400 self-center">0 Exercises</span>
+                <div id="total-stats" class="flex gap-2 text-sm text-gray-400 self-center flex-wrap items-center">
+                    <span id="stat-exercises">0 Exercises</span>
+                    <span id="stat-vol-sep" class="text-gray-600 hidden">·</span>
+                    <span id="stat-volume" class="hidden"></span>
+                    <span id="stat-time-sep" class="text-gray-600 hidden">·</span>
+                    <span id="stat-time" class="hidden"></span>
+                    <span id="stat-rest-sep" class="text-gray-600 hidden">·</span>
+                    <span id="stat-rest" class="hidden"></span>
+                </div>
                 <button onclick="saveWorkout()" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded font-bold transition shadow-lg shadow-green-900/20">Save</button>
             </div>
         </div>
@@ -476,6 +484,80 @@
         return null;                                 // unknown — use set.unit toggle
     }
 
+    function calculateWorkoutStats() {
+        const exCount = workoutData.length;
+        document.getElementById('stat-exercises').innerText = `${exCount} Exercise${exCount !== 1 ? 's' : ''}`;
+
+        let totalVolume = 0;
+        let hasVolume = false;
+        let totalSecs = 0;
+        let restSecs = 0;
+
+        workoutData.forEach(ex => {
+            const isVita = ex.dataStatType === 6;
+            ex.sets.forEach(set => {
+                const unit = getSetGoalUnit(ex) || set.unit;
+
+                // Volume: reps × weight for reps-based sets only (skip Vita and timed)
+                if (!isVita && unit === 'reps') {
+                    totalVolume += (set.reps || 0) * (set.weight || 0);
+                    hasVolume = true;
+                }
+
+                // Time: actual seconds for timed sets, estimate for reps-based
+                if (unit === 'sec') {
+                    totalSecs += (set.reps || 0);
+                } else if (unit === 'reps') {
+                    totalSecs += (set.reps || 0) * 3;  // ~3 sec per rep estimate
+                }
+                // kcal: skip (unknown duration)
+
+                restSecs += (set.rest || 0);
+                totalSecs += (set.rest || 0);
+            });
+        });
+
+        // Volume chip
+        const volEl = document.getElementById('stat-volume');
+        const volSep = document.getElementById('stat-vol-sep');
+        if (hasVolume && totalVolume > 0) {
+            const volDisplay = Math.round(totalVolume).toLocaleString();
+            const volUnit = userUnit === 1 ? 'lbs' : 'kg';
+            volEl.innerText = `${volDisplay} ${volUnit}`;
+            volEl.classList.remove('hidden');
+            volSep.classList.remove('hidden');
+        } else {
+            volEl.classList.add('hidden');
+            volSep.classList.add('hidden');
+        }
+
+        // Time chip (~X min total)
+        const timeEl = document.getElementById('stat-time');
+        const timeSep = document.getElementById('stat-time-sep');
+        if (totalSecs > 0) {
+            const totalMins = Math.max(1, Math.round(totalSecs / 60));
+            timeEl.innerText = `~${totalMins} min`;
+            timeEl.classList.remove('hidden');
+            timeSep.classList.remove('hidden');
+        } else {
+            timeEl.classList.add('hidden');
+            timeSep.classList.add('hidden');
+        }
+
+        // Rest chip (X min rest)
+        const restEl = document.getElementById('stat-rest');
+        const restSep = document.getElementById('stat-rest-sep');
+        if (restSecs > 0) {
+            const restMins = Math.max(1, Math.round(restSecs / 60));
+            restEl.innerText = `${restMins} min rest`;
+            restEl.classList.remove('hidden');
+            restSep.classList.remove('hidden');
+        } else {
+            restEl.classList.add('hidden');
+            restSep.classList.add('hidden');
+        }
+    }
+
     // Build preset dropdown from API data (ex.presets = templatePresetList)
     function buildPresetsHtml(ex) {
         const options = [];
@@ -506,11 +588,11 @@
         
         if(workoutData.length === 0) {
             container.innerHTML = `<div id="empty-state" class="flex flex-col items-center justify-center h-full text-gray-500 opacity-50"><p>Select exercises from the library</p></div>`;
-            document.getElementById('total-stats').innerText = "0 Exercises";
+            calculateWorkoutStats();
             return;
         }
 
-        document.getElementById('total-stats').innerText = `${workoutData.length} Exercises`;
+        calculateWorkoutStats();
 
         workoutData.forEach((ex, exIndex) => {
             const card = document.createElement('div');
