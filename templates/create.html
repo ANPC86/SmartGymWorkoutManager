@@ -104,6 +104,8 @@
                     <span id="stat-exercises">0 Exercises</span>
                     <span id="stat-vol-sep" class="text-gray-600 hidden">·</span>
                     <span id="stat-volume" class="hidden"></span>
+                    <span id="stat-burn-sep" class="text-gray-600 hidden">·</span>
+                    <span id="stat-burn" class="hidden"></span>
                     <span id="stat-time-sep" class="text-gray-600 hidden">·</span>
                     <span id="stat-time" class="hidden"></span>
                     <span id="stat-rest-sep" class="text-gray-600 hidden">·</span>
@@ -113,6 +115,16 @@
             </div>
         </div>
         
+        <details id="radar-section" class="hidden mb-3 shrink-0 group">
+            <summary class="cursor-pointer text-sm font-semibold text-gray-400 hover:text-gray-300 flex items-center gap-2 pb-2 border-b border-gray-700 select-none list-none">
+                <svg class="w-4 h-4 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                Target Muscles
+            </summary>
+            <div class="flex justify-center pt-2">
+                <svg id="radar-chart" width="220" height="220"></svg>
+            </div>
+        </details>
+
         <div id="builder-area" class="overflow-y-auto flex-grow space-y-6 pr-2">
             <div id="empty-state" class="flex flex-col items-center justify-center h-full text-gray-500 opacity-50">
                 <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
@@ -306,10 +318,13 @@
                 cablePosition: details.outPosition,
                 completionMethod: details.completionMethod ?? null,
                 selectCompletionMethod: details.selectCompletionMethod ?? null,
-                dataStatType: details.dataStatType ?? null
+                dataStatType: details.dataStatType ?? null,
+                metValue: details.metValue ?? null,
+                trainingPartId2: details.trainingPartId2 ?? null,
+                auxiliaryMuscleGroupList: details.auxiliaryMuscleGroupList || []
             };
         } catch (e) {
-            return { variants: [], presets: [], isUnilateral: false, cablePosition: null, completionMethod: null, selectCompletionMethod: null, dataStatType: null };
+            return { variants: [], presets: [], isUnilateral: false, cablePosition: null, completionMethod: null, selectCompletionMethod: null, dataStatType: null, metValue: null, trainingPartId2: null, auxiliaryMuscleGroupList: [] };
         }
     }
 
@@ -379,7 +394,10 @@
                 cablePosition: meta.cablePosition,
                 completionMethod: meta.completionMethod,
                 selectCompletionMethod: meta.selectCompletionMethod,
-                dataStatType: meta.dataStatType
+                dataStatType: meta.dataStatType,
+                metValue: meta.metValue,
+                trainingPartId2: meta.trainingPartId2,
+                auxiliaryMuscleGroupList: meta.auxiliaryMuscleGroupList
             });
         }
         renderBuilder();
@@ -423,7 +441,10 @@
                 cablePosition: meta.cablePosition,
                 completionMethod: meta.completionMethod,
                 selectCompletionMethod: meta.selectCompletionMethod,
-                dataStatType: meta.dataStatType
+                dataStatType: meta.dataStatType,
+                metValue: meta.metValue,
+                trainingPartId2: meta.trainingPartId2,
+                auxiliaryMuscleGroupList: meta.auxiliaryMuscleGroupList
             };
 
             workoutData.push(newEx);
@@ -492,9 +513,11 @@
         let hasVolume = false;
         let totalSecs = 0;
         let restSecs = 0;
+        let totalKcal = 0;
 
         workoutData.forEach(ex => {
             const isVita = ex.dataStatType === 6;
+            const met = ex.metValue || 5;
             ex.sets.forEach(set => {
                 const unit = getSetGoalUnit(ex) || set.unit;
 
@@ -505,12 +528,17 @@
                 }
 
                 // Time: actual seconds for timed sets, estimate for reps-based
+                let setDurSecs = 0;
                 if (unit === 'sec') {
-                    totalSecs += (set.reps || 0);
+                    setDurSecs = set.reps || 0;
                 } else if (unit === 'reps') {
-                    totalSecs += (set.reps || 0) * 3;  // ~3 sec per rep estimate
+                    setDurSecs = (set.reps || 0) * 3;  // ~3 sec per rep estimate
                 }
                 // kcal: skip (unknown duration)
+                totalSecs += setDurSecs;
+
+                // Burn: MET × 70kg × hours (active time only, not rest)
+                totalKcal += met * 70 * (setDurSecs / 3600);
 
                 restSecs += (set.rest || 0);
                 totalSecs += (set.rest || 0);
@@ -529,6 +557,18 @@
         } else {
             volEl.classList.add('hidden');
             volSep.classList.add('hidden');
+        }
+
+        // Burn chip (~X kcal)
+        const burnEl = document.getElementById('stat-burn');
+        const burnSep = document.getElementById('stat-burn-sep');
+        if (totalKcal >= 1) {
+            burnEl.innerText = `~${Math.round(totalKcal)} kcal`;
+            burnEl.classList.remove('hidden');
+            burnSep.classList.remove('hidden');
+        } else {
+            burnEl.classList.add('hidden');
+            burnSep.classList.add('hidden');
         }
 
         // Time chip (~X min total)
@@ -556,6 +596,96 @@
             restEl.classList.add('hidden');
             restSep.classList.add('hidden');
         }
+    }
+
+    const RADAR_AXES = [
+        { id: 12, label: 'Shoulders' },
+        { id: 13, label: 'Back'      },
+        { id: 15, label: 'Legs'      },
+        { id: 17, label: 'Core'      },
+        { id: 14, label: 'Hips'      },
+        { id: 16, label: 'Arms'      },
+        { id: 11, label: 'Chest'     },
+    ];
+
+    function renderRadarChart() {
+        const section = document.getElementById('radar-section');
+        const svg = document.getElementById('radar-chart');
+
+        if (workoutData.length === 0) {
+            section.classList.add('hidden');
+            return;
+        }
+        if (!section.hasAttribute('open')) section.setAttribute('open', '');
+        section.classList.remove('hidden');
+
+        // Accumulate scores per muscle group
+        const scores = {};
+        RADAR_AXES.forEach(a => scores[a.id] = 0);
+
+        workoutData.forEach(ex => {
+            const setCount = ex.sets.length;
+            const pid = ex.trainingPartId2;
+            if (pid && scores[pid] !== undefined) {
+                scores[pid] += setCount * 1.0;
+            }
+            (ex.auxiliaryMuscleGroupList || []).forEach(aux => {
+                const aid = aux.trainingPartId2;
+                if (aid && scores[aid] !== undefined) {
+                    scores[aid] += setCount * 0.5;
+                }
+            });
+        });
+
+        const maxScore = Math.max(...Object.values(scores), 1);
+        const normalized = RADAR_AXES.map(a => scores[a.id] / maxScore);
+
+        const W = 220, H = 220;
+        const cx = W / 2, cy = H / 2;
+        const R = 75;   // max data radius
+        const N = RADAR_AXES.length;
+        const angleAt = i => -Math.PI / 2 + (2 * Math.PI * i / N);
+        const pt = (i, r) => ({
+            x: cx + r * Math.cos(angleAt(i)),
+            y: cy + r * Math.sin(angleAt(i))
+        });
+
+        let html = '';
+
+        // Background rings
+        for (let lvl = 1; lvl <= 5; lvl++) {
+            const r = R * lvl / 5;
+            const ring = RADAR_AXES.map((_, i) => pt(i, r));
+            const d = ring.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') + 'Z';
+            html += `<path d="${d}" fill="none" stroke="#374151" stroke-width="1"/>`;
+        }
+
+        // Axis lines
+        RADAR_AXES.forEach((_, i) => {
+            const tip = pt(i, R);
+            html += `<line x1="${cx}" y1="${cy}" x2="${tip.x.toFixed(1)}" y2="${tip.y.toFixed(1)}" stroke="#374151" stroke-width="1"/>`;
+        });
+
+        // Data polygon
+        const dataPts = normalized.map((val, i) => pt(i, R * Math.max(val, 0.03)));
+        const dataD = dataPts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') + 'Z';
+        html += `<path d="${dataD}" fill="rgba(52,211,153,0.20)" stroke="#34d399" stroke-width="2"/>`;
+        dataPts.forEach(p => {
+            html += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#34d399"/>`;
+        });
+
+        // Labels
+        const LABEL_R = R + 22;
+        RADAR_AXES.forEach((axis, i) => {
+            const lp = pt(i, LABEL_R);
+            const anchor = lp.x < cx - 4 ? 'end' : lp.x > cx + 4 ? 'start' : 'middle';
+            html += `<text x="${lp.x.toFixed(1)}" y="${lp.y.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle" fill="#9ca3af" font-size="10">${axis.label}</text>`;
+        });
+
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+        svg.setAttribute('width', W);
+        svg.setAttribute('height', H);
+        svg.innerHTML = html;
     }
 
     // Build preset dropdown from API data (ex.presets = templatePresetList)
@@ -589,10 +719,12 @@
         if(workoutData.length === 0) {
             container.innerHTML = `<div id="empty-state" class="flex flex-col items-center justify-center h-full text-gray-500 opacity-50"><p>Select exercises from the library</p></div>`;
             calculateWorkoutStats();
+            renderRadarChart();
             return;
         }
 
         calculateWorkoutStats();
+        renderRadarChart();
 
         workoutData.forEach((ex, exIndex) => {
             const card = document.createElement('div');
@@ -1059,7 +1191,10 @@ You must output a JSON object with the following structure:
                         cablePosition: meta.cablePosition,
                         completionMethod: meta.completionMethod,
                         selectCompletionMethod: meta.selectCompletionMethod,
-                        dataStatType: meta.dataStatType
+                        dataStatType: meta.dataStatType,
+                        metValue: meta.metValue,
+                        trainingPartId2: meta.trainingPartId2,
+                        auxiliaryMuscleGroupList: meta.auxiliaryMuscleGroupList
                     });
                 }
                 renderBuilder();
