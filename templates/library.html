@@ -21,6 +21,11 @@
         </div>
     </div>
 
+    <div id="equipmentBanner" class="hidden bg-blue-900/30 border border-blue-600 p-3 rounded mb-4 text-sm text-blue-200 items-center justify-between">
+        <span id="equipmentBannerText"></span>
+        <a href="/settings" class="text-blue-400 hover:text-blue-300 underline ml-2 flex-shrink-0">Change in Settings</a>
+    </div>
+
     <div class="flex flex-wrap gap-2 mb-4 justify-center md:justify-start">
         <button onclick="filterByCategory('all', this)" class="cat-btn active px-4 py-2 rounded-full text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition">All Categories</button>
         {% for cat in categories %}
@@ -81,7 +86,7 @@
                 </thead>
                 <tbody class="bg-gray-800 divide-y divide-gray-700">
                     {% for ex in exercises %}
-                    <tr class="hover:bg-gray-700/50 exercise-row cursor-pointer" onclick="window.location.href='/exercise/{{ ex.id }}'" data-title="{{ ex.title | lower }}" data-muscle="{{ ex.trainingPartId2 }}" data-category="{{ ex.category_id }}" data-device="{{ ex.device_type_tag | default(ex.device_type) }}">
+                    <tr class="hover:bg-gray-700/50 exercise-row cursor-pointer" onclick="window.location.href='/exercise/{{ ex.id }}'" data-title="{{ ex.title | lower }}" data-muscle="{{ ex.trainingPartId2 }}" data-category="{{ ex.category_id }}" data-device="{{ ex.device_type_tag | default(ex.device_type) }}" data-accessories="{{ ex.accessories }}">
                         <td class="px-4 py-2 font-mono text-xs text-gray-500 align-top">{{ ex.id }}</td>
                         <td class="px-4 py-2 font-bold text-white align-top">
                             {{ ex.title }}
@@ -125,8 +130,9 @@
            data-title="{{ ex.title | lower }}"
            data-muscle="{{ ex.trainingPartId2 }}"
            data-category="{{ ex.category_id }}"
-           data-device="{{ ex.device_type_tag | default(ex.device_type) }}">
-            
+           data-device="{{ ex.device_type_tag | default(ex.device_type) }}"
+           data-accessories="{{ ex.accessories }}">
+
             <div class="aspect-square bg-gray-900 overflow-hidden relative">
                 <img src="{{ ex.img | local_cache }}" alt="{{ ex.title }}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" loading="lazy">
                 
@@ -165,6 +171,26 @@
 </div>
 
 <script>
+    const ownedAccessories = new Set({{ owned_accessories | tojson }});
+
+    // Pilates (cat 18) always needs Pilates accessories even if individual exercises don't list them
+    const categoryRequiredAccessories = {
+        '18': [11, 12],  // Pilates → must own Pilates Loops (11) or Pilates Straps (12)
+    };
+
+    function passesAccessoryFilter(accStr, categoryId) {
+        if (ownedAccessories.size === 0) return true;
+        // Category-level check: must own at least one of the required accessories
+        if (categoryId && categoryRequiredAccessories[categoryId]) {
+            const reqAny = categoryRequiredAccessories[categoryId];
+            if (!reqAny.some(id => ownedAccessories.has(id))) return false;
+        }
+        if (!accStr || accStr === '' || accStr === 'None') return true;
+        const required = String(accStr).split(',').map(s => s.trim()).filter(Boolean);
+        if (required.length === 0) return true;
+        return required.every(id => ownedAccessories.has(parseInt(id)));
+    }
+
     // Simple Client-Side Filtering
     const searchInput = document.getElementById('search-input');
     const cards = document.querySelectorAll('.exercise-card');
@@ -240,13 +266,15 @@
             const cardMuscle = card.getAttribute('data-muscle');
             const cardCategory = card.getAttribute('data-category');
             const cardDevice = (card.getAttribute('data-device') || '').split(',');
-            
+            const cardAccessories = card.getAttribute('data-accessories') || '';
+
             const matchesSearch = title.includes(searchTerm);
             const matchesMuscle = (muscleId === 'all') || (cardMuscle === muscleId);
             const matchesCategory = categoryMatch(cardCategory, catId);
             const matchesDevice = (deviceType === 'all') || cardDevice.includes(deviceType);
+            const matchesAccessories = passesAccessoryFilter(cardAccessories, cardCategory);
 
-            if (matchesSearch && matchesMuscle && matchesCategory && matchesDevice) {
+            if (matchesSearch && matchesMuscle && matchesCategory && matchesDevice && matchesAccessories) {
                 card.style.display = 'block';
                 visibleCount++;
             } else {
@@ -260,13 +288,15 @@
             const rowMuscle = row.getAttribute('data-muscle');
             const rowCategory = row.getAttribute('data-category');
             const rowDevice = (row.getAttribute('data-device') || '').split(',');
-            
+            const rowAccessories = row.getAttribute('data-accessories') || '';
+
             const matchesSearch = title.includes(searchTerm);
             const matchesMuscle = (muscleId === 'all') || (rowMuscle === muscleId);
             const matchesCategory = categoryMatch(rowCategory, catId);
             const matchesDevice = (deviceType === 'all') || rowDevice.includes(deviceType);
+            const matchesAccessories = passesAccessoryFilter(rowAccessories, rowCategory);
 
-            if (matchesSearch && matchesMuscle && matchesCategory && matchesDevice) {
+            if (matchesSearch && matchesMuscle && matchesCategory && matchesDevice && matchesAccessories) {
                 row.style.display = 'table-row';
             } else {
                 row.style.display = 'none';
@@ -316,6 +346,20 @@
         navigator.clipboard.writeText(text).then(() => {
             alert('Table copied to clipboard! You can now paste it into your LLM.');
         });
+    }
+
+    // Apply accessory filter on page load and show banner
+    if (ownedAccessories.size > 0) {
+        applyFilters('', currentFilter, currentCategory, currentDevice);
+        const totalCards = document.querySelectorAll('.exercise-card').length;
+        const hiddenCards = document.querySelectorAll('.exercise-card[style*="display: none"]').length;
+        if (hiddenCards > 0) {
+            document.getElementById('equipmentBannerText').textContent =
+                `Filtered by your equipment — ${hiddenCards} item(s) hidden`;
+            const banner = document.getElementById('equipmentBanner');
+            banner.classList.remove('hidden');
+            banner.classList.add('flex');
+        }
     }
 </script>
 {% endblock %}
