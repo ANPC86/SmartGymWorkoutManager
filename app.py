@@ -200,31 +200,6 @@ def update_unit():
         flash(f"Error updating unit: {msg}", "error")
     return redirect(url_for('settings'))
 
-@app.route('/settings/device', methods=['POST'])
-def update_device():
-    device_type = int(request.form.get('device_type', client.credentials.get('device_type', 1)))
-    allow_monster_moves = bool(request.form.get('allow_monster_moves'))
-    creds = client.credentials
-    client.save_config(
-        creds.get('user_id'),
-        creds.get('token'),
-        creds.get('region'),
-        creds.get('unit', 0),
-        creds.get('custom_instruction', ''),
-        device_type,
-        allow_monster_moves,
-        creds.get('owned_accessories', []),
-        creds.get('owned_devices', []),
-    )
-    client.library_cache = None
-    if os.path.exists(client.library_cache_file):
-        try:
-            os.remove(client.library_cache_file)
-        except Exception as e:
-            print(f"Error removing cache file: {e}")
-    flash("Device settings updated!", "success")
-    return redirect(url_for('settings'))
-
 @app.route('/settings/accessories', methods=['POST'])
 def update_accessories():
     selected = request.form.getlist('accessories')

@@ -51,22 +51,6 @@
         document.getElementById('firstDayOfWeek').value = localStorage.getItem('firstDayOfWeek') || '1';
     </script>
 
-    <form action="/settings/device" method="POST" class="mb-4 pb-4 border-b border-gray-700">
-        <label class="block text-sm font-bold mb-2 text-gray-300">Device Type</label>
-        <div class="flex gap-2 mb-3">
-            <select id="device_type" name="device_type" class="flex-grow p-2 bg-gray-700 rounded text-white border border-gray-600">
-                <option value="1" {% if creds.device_type == 1 %}selected{% endif %}>Gym Monster</option>
-                <option value="2" {% if creds.device_type == 2 %}selected{% endif %}>Gym Pal</option>
-            </select>
-            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Save</button>
-        </div>
-        <div id="allow_monster_moves_wrap" class="flex items-center gap-2 text-sm text-gray-300">
-            <input type="checkbox" id="allow_monster_moves" name="allow_monster_moves" class="h-4 w-4" {% if creds.allow_monster_moves %}checked{% endif %}>
-            <label for="allow_monster_moves">Allow Gym Monster movements in Gym Pal workouts</label>
-        </div>
-        <p class="text-xs text-gray-500 mt-2">This only changes which exercises and workouts are fetched; it does not change your account login.</p>
-    </form>
-
     <form action="/settings/owned_devices" method="POST" class="mb-4 pb-4 border-b border-gray-700">
         <label class="block text-sm font-bold mb-3 text-gray-300">Owned Devices</label>
         <p class="text-xs text-gray-500 mb-3">Select the devices you own. Workouts for unchecked devices will be hidden on the Browse page.</p>
@@ -185,15 +169,4 @@
         </p>
     </div>
 </div>
-<script>
-    const deviceSelect = document.getElementById('device_type');
-    const allowWrap = document.getElementById('allow_monster_moves_wrap');
-    if (deviceSelect && allowWrap) {
-        const toggleAllow = () => {
-            allowWrap.style.display = deviceSelect.value === '2' ? 'flex' : 'none';
-        };
-        deviceSelect.addEventListener('change', toggleAllow);
-        toggleAllow();
-    }
-</script>
 {% endblock %}
