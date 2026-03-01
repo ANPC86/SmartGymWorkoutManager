@@ -16,11 +16,13 @@ from api_client import SpeedianceClient
 def _make_client():
     """Return a client with fake credentials so methods don't bail early."""
     client = SpeedianceClient.__new__(SpeedianceClient)
-    client.credentials = {"user_id": "test_user", "token": "test_token", "region": "Global", "unit": 0, "custom_instruction": ""}
+    client.credentials = {"user_id": "test_user", "token": "test_token", "region": "Global", "unit": 0, "custom_instruction": "", "device_type": 1, "allow_monster_moves": False, "owned_accessories": [], "owned_devices": []}
     client.host = "api2.speediance.com"
     client.base_url = "https://api2.speediance.com"
     client.last_debug_info = {}
     client.library_cache = None
+    client.device_type = 1
+    client.allow_monster_moves = False
     client.session = MagicMock()
     return client
 

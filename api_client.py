@@ -85,17 +85,21 @@ class SpeedianceClient:
             "custom_instruction": "",
             "device_type": 1,
             "allow_monster_moves": False,
+            "owned_accessories": [],
+            "owned_devices": [],
         }
 
-    def save_config(self, user_id, token, region="Global", unit=0, custom_instruction="", device_type=1, allow_monster_moves=False):
+    def save_config(self, user_id, token, region="Global", unit=0, custom_instruction="", device_type=1, allow_monster_moves=False, owned_accessories=None, owned_devices=None):
         self.credentials = {
-            "user_id": user_id, 
-            "token": token, 
-            "region": region, 
+            "user_id": user_id,
+            "token": token,
+            "region": region,
             "unit": unit,
             "custom_instruction": custom_instruction,
             "device_type": int(device_type),
             "allow_monster_moves": bool(allow_monster_moves),
+            "owned_accessories": owned_accessories or [],
+            "owned_devices": owned_devices or [],
         }
         self.region = region
         self.device_type = int(device_type)
@@ -116,13 +120,15 @@ class SpeedianceClient:
             if resp.status_code == 200:
                 # Update local config
                 self.save_config(
-                    self.credentials.get("user_id"), 
-                    self.credentials.get("token"), 
+                    self.credentials.get("user_id"),
+                    self.credentials.get("token"),
                     self.credentials.get("region"),
                     unit,
                     self.credentials.get("custom_instruction", ""),
                     self.credentials.get("device_type", 1),
                     self.credentials.get("allow_monster_moves", False),
+                    self.credentials.get("owned_accessories", []),
+                    self.credentials.get("owned_devices", []),
                 )
                 return True, "Unit updated successfully"
             else:
@@ -182,6 +188,8 @@ class SpeedianceClient:
                         self.credentials.get('custom_instruction', ''),
                         self.credentials.get('device_type', 1),
                         self.credentials.get('allow_monster_moves', False),
+                        self.credentials.get('owned_accessories', []),
+                        self.credentials.get('owned_devices', []),
                     )
                     return True, "Login successful", None
                 return False, "Token or appUserId not found in response", f"Response: {resp.text}"
@@ -211,6 +219,8 @@ class SpeedianceClient:
             self.credentials.get('custom_instruction', ''),
             self.credentials.get('device_type', 1),
             self.credentials.get('allow_monster_moves', False),
+            self.credentials.get('owned_accessories', []),
+            self.credentials.get('owned_devices', []),
         )
         return True
 
@@ -442,7 +452,35 @@ class SpeedianceClient:
             print(f"Error scheduling workout: {e}")
             return False
 
-    def save_workout(self, name, exercises, template_id=None): 
+    def schedule_course(self, date_str, course_id, status):
+        """
+        Schedules or unschedules an official course.
+        status: 1 to add, 0 to remove
+        """
+        url = f"{self.base_url}/api/app/courseReservation"
+        payload = {
+            "status": status,
+            "deviceType": self.device_type,
+            "thatDay": date_str,
+            "courseId": course_id
+        }
+        try:
+            resp = self._request('POST', url, headers=self._get_headers(), json=payload)
+            self.last_debug_info = {
+                "url": url, "method": "POST",
+                "request_body": payload,
+                "response_body": resp.json() if resp.content else None,
+                "status": resp.status_code,
+            }
+            if resp.status_code == 401:
+                raise Exception("Unauthorized")
+            return resp.json().get('data', False)
+        except Exception as e:
+            if str(e) == "Unauthorized": raise e
+            print(f"Error scheduling course: {e}")
+            return False
+
+    def save_workout(self, name, exercises, template_id=None):
         """
         Speichert (ohne ID) oder Aktualisiert (mit ID).
         Behebt den 'Parameter Error' durch saubere Trennung von weights und counterweight2.
@@ -662,3 +700,67 @@ class SpeedianceClient:
             if str(e) == "Unauthorized": raise e
             print(f"Error fetching stats: {e}")
             return None
+
+    # ── Browse: Courses & Programs ──────────────────────────────
+
+    def get_courses_page(self, page=1, page_size=200):
+        """Fetches a page of courses (max 200 per page).
+        GET /api/app/v2/course/page?pageNo={page}&pageSize={page_size}
+        """
+        url = f"{self.base_url}/api/app/v2/course/page?pageNo={page}&pageSize={page_size}"
+        try:
+            resp = self._request('GET', url, headers=self._get_headers())
+            if resp.status_code == 401:
+                raise Exception("Unauthorized")
+            data = resp.json().get('data', [])
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            if str(e) == "Unauthorized": raise e
+            print(f"Error fetching courses page: {e}")
+            return []
+
+    def get_course_detail(self, course_id):
+        """Fetches full course detail including exercise list.
+        GET /api/app/v2/course/info/{id}?weightConfig=1
+        """
+        url = f"{self.base_url}/api/app/v2/course/info/{course_id}?weightConfig=1"
+        try:
+            resp = self._request('GET', url, headers=self._get_headers())
+            if resp.status_code == 401:
+                raise Exception("Unauthorized")
+            return resp.json().get('data', {})
+        except Exception as e:
+            if str(e) == "Unauthorized": raise e
+            print(f"Error fetching course detail: {e}")
+            return {}
+
+    def get_programs_page(self, page=1, page_size=200):
+        """Fetches a page of programs.
+        GET /api/mobile/exclusivePlan/page?pageNo={page}&pageSize={page_size}
+        """
+        url = f"{self.base_url}/api/mobile/exclusivePlan/page?pageNo={page}&pageSize={page_size}"
+        try:
+            resp = self._request('GET', url, headers=self._get_headers())
+            if resp.status_code == 401:
+                raise Exception("Unauthorized")
+            data = resp.json().get('data', [])
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            if str(e) == "Unauthorized": raise e
+            print(f"Error fetching programs page: {e}")
+            return []
+
+    def get_program_detail(self, plan_id):
+        """Fetches full program detail including week/day structure.
+        GET /api/app/exclusivePlan/{id}
+        """
+        url = f"{self.base_url}/api/app/exclusivePlan/{plan_id}"
+        try:
+            resp = self._request('GET', url, headers=self._get_headers())
+            if resp.status_code == 401:
+                raise Exception("Unauthorized")
+            return resp.json().get('data', {})
+        except Exception as e:
+            if str(e) == "Unauthorized": raise e
+            print(f"Error fetching program detail: {e}")
+            return {}
