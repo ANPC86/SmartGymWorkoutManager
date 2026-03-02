@@ -9,6 +9,7 @@
             <input type="date" id="endDate" class="bg-gray-800 border border-gray-600 text-white p-2 rounded text-sm">
             <button onclick="fetchHistory()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition text-sm">Load</button>
             <button onclick="exportHistory()" id="exportBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition text-sm hidden">Export JSON</button>
+            <button onclick="deepExportHistory()" id="deepExportBtn" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition text-sm hidden">Deep Export</button>
         </div>
     </div>
 
@@ -91,6 +92,11 @@
             <div id="detailLoading" class="text-center py-8 text-gray-500">Loading details...</div>
             <div id="detailExercises" class="space-y-3"></div>
         </div>
+
+        <!-- Modal Footer -->
+        <div id="detailFooter" class="hidden mt-3 pt-3 border-t border-gray-700 flex justify-end">
+            <button onclick="downloadCurrentDetail()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm transition">Download JSON</button>
+        </div>
     </div>
 </div>
 
@@ -98,6 +104,7 @@
     const unit = {{ unit }};
     const unitLabel = unit === 1 ? 'lbs' : 'kg';
     let historyData = null;
+    let currentDetailPayload = null;
 
     // Type labels and detail endpoint mapping
     const TYPE_MAP = {
@@ -132,7 +139,7 @@
         // "2026-02-27 19:12:47" → "Feb 27, 19:12"
         if (!str) return '-';
         try {
-            const d = new Date(str.replace(' ', 'T'));
+            const d = new Date(str.replace(' ', 'T') + 'Z');
             const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
             return `${months[d.getMonth()]} ${d.getDate()}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
         } catch { return str; }
@@ -192,11 +199,13 @@
             document.getElementById('emptyState').textContent = 'No workouts found in this date range.';
             document.getElementById('emptyState').classList.remove('hidden');
             document.getElementById('exportBtn').classList.add('hidden');
+            document.getElementById('deepExportBtn').classList.add('hidden');
             return;
         }
 
         document.getElementById('recordsTable').classList.remove('hidden');
         document.getElementById('exportBtn').classList.remove('hidden');
+        document.getElementById('deepExportBtn').classList.remove('hidden');
 
         // Sort by startTime descending
         records.sort((a, b) => (b.startTime || b.createTime || '').localeCompare(a.startTime || a.createTime || ''));
@@ -247,6 +256,8 @@
         document.getElementById('detailLoading').classList.remove('hidden');
         document.getElementById('detailExercises').innerHTML = '';
         document.getElementById('detailStats').classList.add('hidden');
+        document.getElementById('detailFooter').classList.add('hidden');
+        currentDetailPayload = null;
 
         const typeInfo = TYPE_MAP[rec.type] || {};
         const apiType = typeInfo.detailType || 'custom';
@@ -254,6 +265,8 @@
         try {
             const resp = await fetch(`/api/history/detail/${rec.trainingId}?type=${apiType}`);
             const data = await resp.json();
+            currentDetailPayload = { summary: rec, detail: data };
+            document.getElementById('detailFooter').classList.remove('hidden');
             document.getElementById('detailLoading').classList.add('hidden');
             renderDetail(data, rec);
         } catch (err) {
@@ -426,9 +439,63 @@
         });
     }
 
+    function downloadCurrentDetail() {
+        if (!currentDetailPayload) return;
+        const rec = currentDetailPayload.summary;
+        const blob = new Blob([JSON.stringify(currentDetailPayload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `training-record-${rec.trainingId}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
     function closeDetailModal() {
         document.getElementById('detailModal').classList.add('hidden');
         document.getElementById('detailModal').classList.remove('flex');
+    }
+
+    async function deepExportHistory() {
+        if (!historyData || !historyData.records || historyData.records.length === 0)
+            return alert('No data to export.');
+        const eligible = historyData.records.filter(r => (TYPE_MAP[r.type] || {}).detailType !== null);
+        if (!confirm(`This will fetch full detail for ${eligible.length} workout(s). Continue?`)) return;
+
+        const btn = document.getElementById('deepExportBtn');
+        btn.disabled = true;
+        const fullDataset = [];
+        for (let i = 0; i < eligible.length; i++) {
+            const rec = eligible[i];
+            btn.textContent = `Fetching ${i + 1}/${eligible.length}...`;
+            const apiType = (TYPE_MAP[rec.type] || {}).detailType || 'custom';
+            try {
+                const resp = await fetch(`/api/history/detail/${rec.trainingId}?type=${apiType}`);
+                const detail = await resp.json();
+                fullDataset.push({ summary: rec, detail });
+            } catch (e) {
+                fullDataset.push({ summary: rec, detail: null, error: e.message });
+            }
+            await new Promise(r => setTimeout(r, 50));
+        }
+        btn.disabled = false;
+        btn.textContent = 'Deep Export';
+
+        const exportObj = {
+            exportDate: new Date().toISOString(),
+            dateRange: {
+                start: document.getElementById('startDate').value,
+                end: document.getElementById('endDate').value
+            },
+            records: fullDataset
+        };
+        const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `workout_history_deep_${document.getElementById('startDate').value}_${document.getElementById('endDate').value}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     function exportHistory() {

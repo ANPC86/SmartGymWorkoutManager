@@ -147,19 +147,32 @@ def settings():
         device_type = int(request.form.get('device_type', client.credentials.get('device_type', 1)))
         allow_monster_moves = bool(request.form.get('allow_monster_moves'))
         client.save_config(
-            request.form['user_id'], 
-            request.form['token'], 
+            request.form['user_id'],
+            request.form['token'],
             request.form.get('region', 'Global'),
             int(request.form.get('unit', 0)),
             request.form.get('custom_instruction', ''),
             device_type,
             allow_monster_moves,
+            client.credentials.get('owned_accessories', []),
+            client.credentials.get('owned_devices', []),
         )
         flash("Settings saved!", "success")
         return redirect(url_for('index'))
     
     creds = client.load_config()
-    return render_template('settings.html', creds=creds)
+    # Ensure new fields exist for older configs
+    if 'owned_accessories' not in creds:
+        creds['owned_accessories'] = []
+    if 'owned_devices' not in creds:
+        creds['owned_devices'] = []
+    accessories = []
+    if creds.get('token'):
+        try:
+            accessories = client.get_accessories()
+        except Exception:
+            pass
+    return render_template('settings.html', creds=creds, accessories=accessories)
 
 @app.route('/settings/custom_instruction', methods=['POST'])
 def update_custom_instruction():
@@ -169,13 +182,15 @@ def update_custom_instruction():
     # Update only the instruction, keep other settings
     creds = client.credentials
     client.save_config(
-        creds.get('user_id'), 
-        creds.get('token'), 
+        creds.get('user_id'),
+        creds.get('token'),
         creds.get('region'),
         creds.get('unit', 0),
         instruction,
         creds.get('device_type', 1),
         creds.get('allow_monster_moves', False),
+        creds.get('owned_accessories', []),
+        creds.get('owned_devices', []),
     )
     return jsonify({"status": "success"})
 
@@ -189,10 +204,10 @@ def update_unit():
         flash(f"Error updating unit: {msg}", "error")
     return redirect(url_for('settings'))
 
-@app.route('/settings/device', methods=['POST'])
-def update_device():
-    device_type = int(request.form.get('device_type', client.credentials.get('device_type', 1)))
-    allow_monster_moves = bool(request.form.get('allow_monster_moves'))
+@app.route('/settings/accessories', methods=['POST'])
+def update_accessories():
+    selected = request.form.getlist('accessories')
+    owned = [int(x) for x in selected]
     creds = client.credentials
     client.save_config(
         creds.get('user_id'),
@@ -200,16 +215,31 @@ def update_device():
         creds.get('region'),
         creds.get('unit', 0),
         creds.get('custom_instruction', ''),
-        device_type,
-        allow_monster_moves,
+        creds.get('device_type', 1),
+        creds.get('allow_monster_moves', False),
+        owned,
+        creds.get('owned_devices', []),
     )
-    client.library_cache = None
-    if os.path.exists(client.library_cache_file):
-        try:
-            os.remove(client.library_cache_file)
-        except Exception as e:
-            print(f"Error removing cache file: {e}")
-    flash("Device settings updated!", "success")
+    flash("Accessory settings updated!", "success")
+    return redirect(url_for('settings'))
+
+@app.route('/settings/owned_devices', methods=['POST'])
+def update_owned_devices():
+    selected = request.form.getlist('owned_devices')
+    owned = [int(x) for x in selected]
+    creds = client.credentials
+    client.save_config(
+        creds.get('user_id'),
+        creds.get('token'),
+        creds.get('region'),
+        creds.get('unit', 0),
+        creds.get('custom_instruction', ''),
+        creds.get('device_type', 1),
+        creds.get('allow_monster_moves', False),
+        creds.get('owned_accessories', []),
+        owned,
+    )
+    flash("Owned devices updated!", "success")
     return redirect(url_for('settings'))
 
 @app.route('/login', methods=['POST'])
@@ -398,12 +428,16 @@ def library():
         names = [accessory_map.get(aid, 'Standard') for aid in acc_ids if aid]
         ex['equipment_name'] = ', '.join(names) if names else 'Standard'
         
+    owned_accessories = client.credentials.get('owned_accessories', [])
+    owned_devices = client.credentials.get('owned_devices', [])
     return render_template(
         'library.html',
         exercises=exercises,
         categories=categories,
         device_type=client.device_type,
         allow_monster_moves=client.allow_monster_moves,
+        owned_accessories=owned_accessories,
+        owned_devices=owned_devices,
     )
 
 @app.route('/library/refresh')
@@ -502,17 +536,39 @@ def api_schedule():
     """Schedules or unschedules a workout."""
     if not client.credentials.get("token"):
         return jsonify({"error": "Unauthorized"}), 401
-        
+
     data = request.json
     date_str = data.get('date')
     template_code = data.get('templateCode')
     status = data.get('status')
-    
+
     if not date_str or not template_code or status is None:
         return jsonify({"error": "Missing parameters"}), 400
-        
+
     try:
         success = client.schedule_workout(date_str, template_code, status)
+        return jsonify({"success": success})
+    except Exception as e:
+        if str(e) == "Unauthorized":
+            return jsonify({"error": "Unauthorized"}), 401
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/schedule_course', methods=['POST'])
+def api_schedule_course():
+    """Schedules or unschedules an official course."""
+    if not client.credentials.get("token"):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json
+    date_str = data.get('date')
+    course_id = data.get('courseId')
+    status = data.get('status', 1)
+
+    if not date_str or not course_id:
+        return jsonify({"error": "Missing parameters"}), 400
+
+    try:
+        success = client.schedule_course(date_str, course_id, status)
         return jsonify({"success": success})
     except Exception as e:
         if str(e) == "Unauthorized":
@@ -562,6 +618,75 @@ def api_history_detail(training_id):
 def debug_last_response():
     """Returns the last API request/response info for debugging."""
     return jsonify(client.last_debug_info)
+
+@app.route('/browse')
+def browse_page():
+    if not client.credentials.get("token"):
+        return redirect(url_for('settings'))
+    unit = client.credentials.get('unit', 0)
+    owned_accessories = client.credentials.get('owned_accessories', [])
+    owned_devices = client.credentials.get('owned_devices', [])
+    return render_template('browse.html', unit=unit, owned_accessories=owned_accessories, owned_devices=owned_devices)
+
+@app.route('/api/browse/courses')
+def api_browse_courses():
+    if not client.credentials.get("token"):
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        all_courses = []
+        seen_ids = set()
+        for page in range(1, 20):
+            batch = client.get_courses_page(page, 200)
+            if not batch:
+                break
+            for c in batch:
+                if c.get('id') not in seen_ids:
+                    seen_ids.add(c['id'])
+                    all_courses.append(c)
+            if len(batch) < 200:
+                break
+        return jsonify({"courses": all_courses})
+    except Exception as e:
+        if "Unauthorized" in str(e):
+            return jsonify({"error": "Unauthorized"}), 401
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/browse/course/<int:course_id>')
+def api_browse_course_detail(course_id):
+    if not client.credentials.get("token"):
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        detail = client.get_course_detail(course_id)
+        return jsonify(detail)
+    except Exception as e:
+        if "Unauthorized" in str(e):
+            return jsonify({"error": "Unauthorized"}), 401
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/browse/programs')
+def api_browse_programs():
+    if not client.credentials.get("token"):
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        page = request.args.get('page', 1, type=int)
+        programs = client.get_programs_page(page, 200)
+        return jsonify({"programs": programs, "page": page, "hasMore": len(programs) == 200})
+    except Exception as e:
+        if "Unauthorized" in str(e):
+            return jsonify({"error": "Unauthorized"}), 401
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/browse/program/<int:plan_id>')
+def api_browse_program_detail(plan_id):
+    if not client.credentials.get("token"):
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        detail = client.get_program_detail(plan_id)
+        return jsonify(detail)
+    except Exception as e:
+        if "Unauthorized" in str(e):
+            return jsonify({"error": "Unauthorized"}), 401
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/edit/<string:code>')  # HERE: string instead of int
 def edit(code):

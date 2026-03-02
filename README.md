@@ -5,8 +5,10 @@ A desktop web interface for managing Speediance Gym Monster workouts, viewing th
 ## Features
 
 - **Exercise Library**: Browse and filter all available exercises with local caching for speed.
+- **Browse Workouts & Programs**: Explore 1000+ official Speediance workouts and programs with exercise details, and schedule them directly to your calendar.
 - **Workout Builder**: Create custom workouts with a drag-and-drop interface (or click-to-add).
 - **Training Calendar**: Schedule your workouts by dragging and dropping them onto a monthly calendar.
+- **Equipment Filtering**: Configure your owned devices and accessories in Settings to automatically hide workouts and exercises you can't perform.
 - **AI Workout Generator (Experimental)**: Generate prompts for LLMs (ChatGPT/Claude) to create structured workout plans and import them directly via JSON.
 - **Workout Manager**: View, edit, and delete custom workouts.
 - **Offline Media**: Cache images and videos locally to reduce bandwidth and improve loading times.
@@ -86,10 +88,16 @@ Before you can manage workouts, you need to authenticate:
 ### 4. Scheduling Workouts
 Manage your training schedule directly from the dashboard:
 1. **Add to Calendar**: Drag any workout from your "My Workouts" list and drop it onto a date in the calendar.
-2. **Reschedule**: Drag an already scheduled workout from one date to another to move it.
-3. **Remove**: Click the **×** icon on a calendar entry to remove it.
-   - *Note: Official Speediance Programs (shown in blue) are managed by the system and cannot be moved or deleted here.*
-4. **Past Dates**: The system prevents scheduling or moving workouts to dates in the past.
+2. **Schedule from Browse**: Open any workout on the Browse page, click **Schedule Workout**, pick a date, and confirm.
+3. **Reschedule**: Drag an already scheduled workout from one date to another to move it.
+4. **Remove**: Click the **×** icon on a calendar entry to remove it.
+   - *Note: Official Speediance Programs (shown in blue) are managed by the system and cannot be moved or deleted here. Programs can only be scheduled through the Speediance app.*
+5. **Past Dates**: The system prevents scheduling or moving workouts to dates in the past.
+
+### 4b. Equipment Filtering
+Customize which content is shown based on your equipment:
+1. Go to **Settings** and check/uncheck your **Owned Devices** (Gym Monster, Gym Pal, Velonix) and **Owned Accessories** (Barbell, Flat Bench, Pilates Straps, etc.).
+2. Workouts, programs, and exercises requiring equipment you don't own are automatically hidden across all pages (Browse, Library).
 
 ### 5. Advanced AI Features (Import/Export)
 Use the power of LLMs to design workouts:
@@ -126,13 +134,18 @@ To speed up the interface:
 
 ## Testing
 
-The project includes an End-to-End (E2E) test script to verify core functionality.
+Unit tests and E2E tests are available:
 
-To run the tests:
 ```bash
+# Python unit tests (16 tests, no API needed)
+python -m pytest tests/test_unit.py -v
+
+# JavaScript unit tests (31 tests)
+node --test tests/workout-logic.test.mjs
+
+# E2E tests (requires valid credentials in config.json)
 python test_e2e_workouts.py
 ```
-This script simulates a user logging in, creating a workout, and verifying the data structure.
 
 ## Known Issues & Limitations
 

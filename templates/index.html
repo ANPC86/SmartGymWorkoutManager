@@ -50,35 +50,6 @@
     {% endfor %}
 </div>
 
-<!-- Calendar Section -->
-<div class="mb-10">
-    <div class="flex justify-between items-center mb-4">
-        <h2 class="text-2xl font-bold text-white flex items-center gap-2">
-            <span>📅</span> Training Calendar
-        </h2>
-        <div class="flex items-center space-x-4 bg-gray-800 p-2 rounded-lg">
-            <button id="prevMonth" class="text-gray-400 hover:text-white px-2 py-1 hover:bg-gray-700 rounded transition">
-                &lt; Prev
-            </button>
-            <span id="currentMonthLabel" class="text-xl font-semibold text-white min-w-[150px] text-center"></span>
-            <button id="nextMonth" class="text-gray-400 hover:text-white px-2 py-1 hover:bg-gray-700 rounded transition">
-                Next &gt;
-            </button>
-        </div>
-    </div>
-    
-    <div class="bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700">
-        <!-- Weekday Headers -->
-        <div class="grid grid-cols-7 gap-2 mb-2 text-center text-gray-400 font-bold uppercase text-sm tracking-wider">
-            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
-        </div>
-        
-        <!-- Calendar Grid -->
-        <div id="calendarGrid" class="grid grid-cols-7 gap-2 auto-rows-fr">
-            <!-- Calendar days will be injected here -->
-        </div>
-    </div>
-</div>
 
 <!-- Instructions Section -->
 <div class="bg-gray-800 rounded-lg p-6 mb-8 border border-gray-700 shadow-lg">
