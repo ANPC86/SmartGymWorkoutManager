@@ -135,14 +135,13 @@
         return `${s}s`;
     }
 
-    function fmtDateTime(str) {
-        // "2026-02-27 19:12:47" → "Feb 27, 19:12"
-        if (!str) return '-';
+    function fmtDateTime(unixSeconds) {
+        // Use startTimestamp (Unix seconds) for accurate local time display
+        if (!unixSeconds) return '-';
         try {
-            const d = new Date(str.replace(' ', 'T') + 'Z');
-            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            return `${months[d.getMonth()]} ${d.getDate()}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-        } catch { return str; }
+            const d = new Date(unixSeconds * 1000);
+            return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } catch { return '-'; }
     }
 
     function fmtWeight(val) {
@@ -207,8 +206,8 @@
         document.getElementById('exportBtn').classList.remove('hidden');
         document.getElementById('deepExportBtn').classList.remove('hidden');
 
-        // Sort by startTime descending
-        records.sort((a, b) => (b.startTime || b.createTime || '').localeCompare(a.startTime || a.createTime || ''));
+        // Sort by startTimestamp descending
+        records.sort((a, b) => (b.startTimestamp || 0) - (a.startTimestamp || 0));
 
         records.forEach(rec => {
             const tr = document.createElement('tr');
@@ -223,7 +222,7 @@
                 tr.onclick = () => openDetail(rec);
             }
 
-            const date = fmtDateTime(rec.startTime || rec.createTime);
+            const date = fmtDateTime(rec.startTimestamp);
             const name = rec.title || 'Workout';
             const duration = fmtSeconds(rec.trainingTime);
             const calories = rec.calorie ? `${Math.round(rec.calorie)} kcal` : '-';
@@ -252,7 +251,7 @@
         modal.classList.add('flex');
 
         document.getElementById('detailTitle').textContent = rec.title || 'Workout Detail';
-        document.getElementById('detailSubtitle').textContent = fmtDateTime(rec.startTime || rec.createTime);
+        document.getElementById('detailSubtitle').textContent = fmtDateTime(rec.startTimestamp);
         document.getElementById('detailLoading').classList.remove('hidden');
         document.getElementById('detailExercises').innerHTML = '';
         document.getElementById('detailStats').classList.add('hidden');

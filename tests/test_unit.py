@@ -127,8 +127,11 @@ class TestSaveWorkoutWeights(unittest.TestCase):
         self.assertNotEqual(action['weights'], '')
         self.assertEqual(action['counterweight2'], '')
 
-    def test_custom_preset_weight_multiplied_by_2_2(self):
-        """20 kg in custom mode → API weight field = '44.0' (20 * 2.2)."""
+    def test_custom_preset_weight_stored_as_is(self):
+        """Custom preset (-1): weight must be stored as-is — no unit conversion.
+        The Speediance API stores weights in the user's configured unit (LBS or KG).
+        Python must NOT multiply or divide by 2.2.
+        """
         exercises = [{
             'groupId': 1,
             'variant_id': 1001,
@@ -137,10 +140,11 @@ class TestSaveWorkoutWeights(unittest.TestCase):
         }]
         payload = self._run_save(exercises)
         action = self._get_action(payload, 1)
-        self.assertEqual(action['weights'], '44.0')
+        # Must be '20.0' — NOT '44.0' (which would mean a wrong ×2.2 was applied)
+        self.assertEqual(action['weights'], '20.0')
 
-    def test_half_kg_weight_converted_correctly(self):
-        """3.5 kg → API weight = '7.7' (3.5 * 2.2)."""
+    def test_custom_weight_stored_without_conversion(self):
+        """3.5 (user unit) → API weight = '3.5' — stored as-is, never multiplied by 2.2."""
         exercises = [{
             'groupId': 1,
             'variant_id': 1001,
@@ -149,7 +153,8 @@ class TestSaveWorkoutWeights(unittest.TestCase):
         }]
         payload = self._run_save(exercises)
         action = self._get_action(payload, 1)
-        self.assertEqual(action['weights'], '7.7')
+        # Must be '3.5' — NOT '7.7' (which would mean a wrong ×2.2 was applied)
+        self.assertEqual(action['weights'], '3.5')
 
     def test_rm_preset_uses_counterweight2(self):
         """Gain Muscle preset (1) → counterweight2 has RM values, weights has dummy '3.5'."""
@@ -168,7 +173,7 @@ class TestSaveWorkoutWeights(unittest.TestCase):
         self.assertEqual(action['counterweight2'], '12,13')
 
     def test_multiple_sets_weight_csv(self):
-        """Multiple sets → weights field is comma-separated."""
+        """Multiple sets → weights field is comma-separated, values stored as-is."""
         exercises = [{
             'groupId': 1,
             'variant_id': 1001,
@@ -181,7 +186,8 @@ class TestSaveWorkoutWeights(unittest.TestCase):
         }]
         payload = self._run_save(exercises)
         action = self._get_action(payload, 1)
-        self.assertEqual(action['weights'], '22.0,33.0,44.0')
+        # Must be '10.0,15.0,20.0' — NOT '22.0,33.0,44.0' (wrong ×2.2 conversion)
+        self.assertEqual(action['weights'], '10.0,15.0,20.0')
 
     # ------------------------------------------------------------------
     # Unilateral L/R tests
@@ -256,63 +262,168 @@ class TestSaveWorkoutWeights(unittest.TestCase):
             self.assertEqual(action['templatePresetId'], preset_id, f"preset_id={preset_id} not preserved")
 
 
-class TestLbsKgMath(unittest.TestCase):
+class TestImperialWeightRoundTrip(unittest.TestCase):
     """
-    Tests for the conversion math used by the frontend (extracted as pure Python).
-    These mirror what workout-logic.js does so we can verify correctness.
+    Regression tests for imperial (LBS) weight handling.
+
+    Bug history:
+        The Speediance API stores weights in the user's configured unit — LBS for
+        imperial users, KG for metric users.  No conversion should occur in Python.
+
+        A developer (testing only in KG/metric mode) introduced a ×2.2 multiply in
+        api_client.py::save_workout, and a matching ÷2.2 in the JS save path, which
+        cancelled out for KG users but broke imperial users:
+
+          Imperial enter → JS ÷2.2 → Python ×2.2 → stored as LBS ← correct value stored
+          BUT the JS import used kgToLbs (×2.2) on the returned LBS value → displayed ×2.2 too high
+
+        Or in other configurations the multiply/divide stacked, sending the machine
+        values that were 2.2× too low (e.g. 25 lbs entered → machine showed 11 lbs).
+
+    Correct contract (verified against live machine):
+        - Frontend sends weight in user's unit, no conversion.
+        - Python stores it as-is (no ×2.2 or ÷2.2).
+        - On import, frontend uses the value as-is (no kgToLbs call for custom exercises).
+        - Machine and create.html both show the original entered value.
     """
 
-    def lbs_to_kg_ui(self, lbs):
-        """Frontend: lbs/2.2 rounded to nearest 0.5 kg."""
-        kg = lbs / 2.2
-        return round(kg * 2) / 2
+    def _run_save(self, weight, preset_id=-1):
+        """Simulate save_workout and return the API weights field for a single set."""
+        from api_client import SpeedianceClient
+        client = SpeedianceClient.__new__(SpeedianceClient)
+        client.credentials = {
+            "user_id": "u", "token": "t", "region": "Global", "unit": 1,
+            "custom_instruction": "", "device_type": 1,
+            "allow_monster_moves": False, "owned_accessories": [], "owned_devices": []
+        }
+        client.host = "api2.speediance.com"
+        client.base_url = "https://api2.speediance.com"
+        client.last_debug_info = {}
+        client.library_cache = None
+        client.device_type = 1
+        client.allow_monster_moves = False
+        client.session = MagicMock()
+        client.get_batch_details = MagicMock(return_value=[
+            {"id": 1, "actionLibraryList": [{"id": 1001}]}
+        ])
+        client.is_exercise_unilateral = MagicMock(return_value=False)
 
-    def kg_to_lbs_ui(self, kg):
-        """Frontend reload: kg * 2.2 rounded to nearest integer lb."""
-        return round(kg * 2.2)
+        captured = {}
+        def fake_request(method, url, **kwargs):
+            if method == 'POST':
+                captured['payload'] = kwargs.get('json', {})
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {"code": 0, "data": {"id": 1, "code": "X"}}
+            return resp
+        client._request = MagicMock(side_effect=fake_request)
 
-    def test_100_lbs_round_trip(self):
-        kg = self.lbs_to_kg_ui(100)
-        lbs_back = self.kg_to_lbs_ui(kg)
-        self.assertAlmostEqual(lbs_back, 100, delta=1)
+        exercises = [{
+            'groupId': 1,
+            'variant_id': 1001,
+            'preset_id': preset_id,
+            'data_stat_type': None,
+            'sets': [{'reps': 10, 'weight': weight, 'mode': 1, 'rest': 60, 'unit': 'reps'}]
+        }]
+        client.save_workout("Test", exercises)
+        payload = captured.get('payload', {})
+        actions = payload.get('actionLibraryList', [])
+        return actions[0]['weights'] if actions else None
 
-    def test_55_lbs_round_trip(self):
-        kg = self.lbs_to_kg_ui(55)
-        lbs_back = self.kg_to_lbs_ui(kg)
-        self.assertAlmostEqual(lbs_back, 55, delta=1)
+    def _simulate_import(self, stored_value, user_unit=1):
+        """
+        Simulate what create.html does on import for a custom exercise.
+        user_unit=1 → imperial (LBS), 0 → metric (KG).
+        Correct behavior: value is used as-is (no kgToLbs conversion).
+        """
+        val = float(stored_value)
+        if user_unit == 1:
+            return round(val)          # LBS: round to nearest integer
+        else:
+            return round(val * 2) / 2  # KG: round to nearest 0.5
 
-    def test_220_lbs_round_trip(self):
-        kg = self.lbs_to_kg_ui(220)
-        lbs_back = self.kg_to_lbs_ui(kg)
-        self.assertAlmostEqual(lbs_back, 220, delta=2)
+    # --- Save side: Python must not convert ---
 
-    def test_half_kg_to_api(self):
-        """3.5 kg → API weight ≈ 7.7."""
-        api_w = 3.5 * 2.2
-        self.assertAlmostEqual(api_w, 7.7, places=1)
+    def test_imperial_50lbs_stored_as_50(self):
+        """50 LBS entered → API must receive '50.0', not '110.0' (×2.2) or '22.5' (÷2.2)."""
+        result = self._run_save(50.0)
+        self.assertEqual(result, '50.0',
+            "REGRESSION: Python is applying a unit conversion. "
+            "Weights must be stored as-is in the user's configured unit.")
+
+    def test_imperial_25lbs_stored_as_25(self):
+        """25 LBS → stored as '25.0'. Machine was showing ~11 lbs when this was wrong (÷2.2)."""
+        result = self._run_save(25.0)
+        self.assertEqual(result, '25.0')
+
+    def test_imperial_100lbs_stored_as_100(self):
+        """100 LBS → stored as '100.0'."""
+        result = self._run_save(100.0)
+        self.assertEqual(result, '100.0')
+
+    def test_kg_user_20kg_stored_as_20(self):
+        """KG user enters 20 KG → stored as '20.0' (same pass-through logic)."""
+        result = self._run_save(20.0)
+        self.assertEqual(result, '20.0')
+
+    # --- Import side: no kgToLbs conversion ---
+
+    def test_import_50_displays_as_50_lbs(self):
+        """API returns 50 → imperial display = 50 LBS (no ×2.2 kgToLbs applied)."""
+        displayed = self._simulate_import(50.0, user_unit=1)
+        self.assertEqual(displayed, 50,
+            "REGRESSION: Import is applying kgToLbs. "
+            "The API already returns values in the user's unit — no conversion needed.")
+
+    def test_import_25_displays_as_25_lbs(self):
+        """API returns 25 → imperial display = 25 LBS."""
+        displayed = self._simulate_import(25.0, user_unit=1)
+        self.assertEqual(displayed, 25)
+
+    def test_import_20_kg_displays_as_20(self):
+        """API returns 20 → KG display = 20.0 (rounded to nearest 0.5)."""
+        displayed = self._simulate_import(20.0, user_unit=0)
+        self.assertEqual(displayed, 20.0)
+
+    # --- Full round-trip ---
+
+    def test_full_roundtrip_50lbs(self):
+        """50 LBS → save → stored → import → displayed == 50 LBS."""
+        stored = self._run_save(50.0)
+        displayed = self._simulate_import(stored, user_unit=1)
+        self.assertEqual(displayed, 50,
+            "Round-trip failed: entered 50 LBS, got back a different value after save/reload.")
+
+    def test_full_roundtrip_25lbs(self):
+        """25 LBS round-trip stays 25."""
+        stored = self._run_save(25.0)
+        displayed = self._simulate_import(stored, user_unit=1)
+        self.assertEqual(displayed, 25)
+
+    def test_full_roundtrip_100lbs(self):
+        """100 LBS round-trip stays 100."""
+        stored = self._run_save(100.0)
+        displayed = self._simulate_import(stored, user_unit=1)
+        self.assertEqual(displayed, 100)
+
+
+class TestClampStep(unittest.TestCase):
+    """Tests for weight clamping/stepping logic."""
+
+    def _clamp_step(self, val, min_w, max_w, step):
+        val = max(min_w, min(max_w, val))
+        return round(val / step) * step
 
     def test_clamp_to_min(self):
-        """Value below min is clamped to min."""
-        def clamp_step(val, min_w, max_w, step):
-            val = max(min_w, min(max_w, val))
-            return round(val / step) * step
-        self.assertEqual(clamp_step(3.0, 3.5, 100, 0.5), 3.5)
+        self.assertEqual(self._clamp_step(3.0, 3.5, 100, 0.5), 3.5)
 
     def test_round_to_step(self):
-        """Value is snapped to nearest step."""
-        def clamp_step(val, min_w, max_w, step):
-            val = max(min_w, min(max_w, val))
-            return round(val / step) * step
-        self.assertAlmostEqual(clamp_step(5.3, 3.5, 100, 0.5), 5.5)
-        self.assertAlmostEqual(clamp_step(5.1, 3.5, 100, 0.5), 5.0)
+        self.assertAlmostEqual(self._clamp_step(5.3, 3.5, 100, 0.5), 5.5)
+        self.assertAlmostEqual(self._clamp_step(5.1, 3.5, 100, 0.5), 5.0)
 
-    def test_integer_step_unchanged(self):
-        """Integer step still works normally."""
-        def clamp_step(val, min_w, max_w, step):
-            val = max(min_w, min(max_w, val))
-            return round(val / step) * step
-        self.assertEqual(clamp_step(13, 9, 13, 1), 13)
-        self.assertEqual(clamp_step(8, 9, 13, 1), 9)
+    def test_integer_step(self):
+        self.assertEqual(self._clamp_step(13, 9, 13, 1), 13)
+        self.assertEqual(self._clamp_step(8, 9, 13, 1), 9)
 
 
 if __name__ == '__main__':

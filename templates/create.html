@@ -366,11 +366,10 @@
                     // Preset workouts: use counterweight2 (RM).
                     w = parseInt(counters[i] || 0);
                 } else {
-                    // Custom workouts: API returns weights in KG.
+                    // Custom workouts: API returns weights in the user's configured unit (LBS or KG).
                     const val = parseFloat(weights[i] || 0);
                     if (!isNaN(val) && val > 0) {
-                        // If in imperial mode, convert KG → LBS for display
-                        w = userUnit === 1 ? kgToLbs(val) : Math.round(val * 2) / 2;
+                        w = userUnit === 1 ? Math.round(val) : Math.round(val * 2) / 2;
                     }
                 }
 
@@ -1278,12 +1277,6 @@ You must output a JSON object with the following structure:
             data_stat_type: ex.dataStatType,
             sets: ex.sets.map(s => {
                 const newSet = {...s};
-                // If Imperial (1) and Custom Preset (-1), convert LBS -> KG before sending
-                if (userUnit === 1 && ex.selectedPresetId == -1) {
-                    let lbs = parseFloat(newSet.weight);
-                    let kg = lbs / 2.2;
-                    newSet.weight = Math.round(kg * 2) / 2;
-                }
                 return newSet;
             })
         }));

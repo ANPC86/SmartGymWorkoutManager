@@ -286,8 +286,7 @@
             // 2. Convert Unix seconds to JavaScript milliseconds
             const dateObj = new Date(timestamp * 1000);
             
-            const dateStr = dateObj.toLocaleString("en-US", {
-                timeZone: "America/Edmonton",
+            const dateStr = dateObj.toLocaleString(undefined, {
                 year: 'numeric', month: 'numeric', day: 'numeric',
                 hour: '2-digit', minute: '2-digit'
             });
@@ -651,8 +650,7 @@
 
     function showWorkoutDetails(workout) {
         const dateObj = new Date((workout.endTimestamp || workout.startTimestamp) * 1000);
-        const dateStr = dateObj.toLocaleString("en-US", {
-            timeZone: "America/Edmonton",
+        const dateStr = dateObj.toLocaleString(undefined, {
             year: 'numeric', month: 'long', day: 'numeric',
             hour: '2-digit', minute: '2-digit'
         });

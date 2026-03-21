@@ -117,7 +117,7 @@ class SpeedianceClient:
             "user_id": user_id,
             "token": token,
             "region": region,
-            "unit": unit,
+            "unit": int(unit),
             "custom_instruction": custom_instruction,
             "device_type": int(device_type),
             "allow_monster_moves": bool(allow_monster_moves),
@@ -616,7 +616,7 @@ class SpeedianceClient:
                     # Vita: no cable weight, level already captured above
                     weights_list.append("0")
                 elif preset_id == -1:
-                    api_weight = weight_val * 2.2
+                    api_weight = weight_val  # JS already converted LBS→KG before sending
                     weights_list.append(f"{api_weight:.1f}")
                     set_capacity += (reps * api_weight)
                 else:
