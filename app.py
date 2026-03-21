@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, Response
 from api_client import SpeedianceClient
+from debug_routes import init_debug
 import json
 import os
 import sys
@@ -27,6 +28,7 @@ else:
 
 app.secret_key = "speediance_secret_key" # For Flash Messages
 client = SpeedianceClient()
+app.register_blueprint(init_debug(client))
 
 # --- Media Caching Logic ---
 # Define local cache path
@@ -122,9 +124,11 @@ def media_proxy():
 def index():
     if not client.credentials.get("token"):
         return redirect(url_for('settings'))
-    
+
     try:
         workouts = client.get_user_workouts()
+        # Sort workouts from oldest to newest (so newest is closest to Calendar section)
+        workouts.sort(key=lambda w: w.get('id', 0))
     except Exception as e:
         if str(e) == "Unauthorized":
             client.logout()
@@ -132,7 +136,7 @@ def index():
             return redirect(url_for('settings'))
         flash("Error loading workouts. Invalid token?", "error")
         workouts = []
-    
+
     unit = client.credentials.get('unit', 0)
     return render_template('index.html', workouts=workouts, unit=unit)
 
@@ -772,6 +776,48 @@ def delete(id):
     client.delete_workout(id)
     flash("Workout deleted.", "info")
     return redirect(url_for('index'))
+
+@app.route('/workout_history')
+def workout_history():
+    if not client.credentials.get("token"): return redirect(url_for('settings'))
+    return render_template('workout_history.html')
+
+@app.route('/api/workout_history', methods=['GET'])
+def api_workout_history():
+    start = request.args.get('start')
+    end = request.args.get('end')
+    if not start or not end:
+        return jsonify({"error": "Missing dates"}), 400
+
+    try:
+        data = client.get_training_history(start, end)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/workout_history/detail/<path:record_id>')
+def api_workout_history_detail(record_id):
+    training_type = request.args.get('type', default=2, type=int)
+
+    if training_type == 5:
+        target_url = f"{client.base_url}/api/app/trainingInfo/cttTrainingInfoDetail/{record_id}"
+    else:
+        target_url = f"{client.base_url}/api/app/trainingInfo/courseTrainingInfoDetail/{record_id}"
+
+    try:
+        headers = client._get_headers()
+        response = requests.get(target_url, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({
+                "error": f"Speediance API Error: {response.status_code}",
+                "url": target_url,
+                "type_requested": training_type
+            }), response.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 class TextRedirector(object):
     def __init__(self, widget, tag="stdout"):

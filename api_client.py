@@ -16,6 +16,29 @@ class SpeedianceClient:
         self.library_cache = self._load_library_cache()
         self.last_debug_info = {}
 
+    def _get_tz_headers(self):
+        """Best-effort Timezone / UTC offset headers similar to the mobile app."""
+        # Prefer Docker/OS TZ if set (e.g. 'America/Edmonton')
+        tz_name = os.environ.get("TZ") or (time.tzname[0] if time.tzname else "GMT")
+
+        # Compute local UTC offset in ±HHMM
+        # time.timezone / time.altzone are seconds WEST of UTC (positive in North America)
+        if time.localtime().tm_isdst and time.daylight:
+            offset_seconds = -time.altzone
+        else:
+            offset_seconds = -time.timezone
+
+        sign = "+" if offset_seconds >= 0 else "-"
+        offset_seconds = abs(offset_seconds)
+        hh = offset_seconds // 3600
+        mm = (offset_seconds % 3600) // 60
+        utc_offset = f"{sign}{hh:02d}{mm:02d}"
+
+        return {
+            "Timezone": tz_name,
+            "Utc_offset": utc_offset
+        }
+
     def _get_library_cache_file(self):
         allow_flag = 1 if self.allow_monster_moves else 0
         return f"library_cache_v2_device{self.device_type}_allow{allow_flag}.json"
@@ -94,7 +117,7 @@ class SpeedianceClient:
             "user_id": user_id,
             "token": token,
             "region": region,
-            "unit": unit,
+            "unit": int(unit),
             "custom_instruction": custom_instruction,
             "device_type": int(device_type),
             "allow_monster_moves": bool(allow_monster_moves),
@@ -143,10 +166,9 @@ class SpeedianceClient:
             "User-Agent": "Dart/3.9 (dart:io)",
             "Content-Type": "application/json",
             "Timestamp": str(int(time.time() * 1000)),
-            "Utc_offset": "+0000",
+            **self._get_tz_headers(),
             "Versioncode": "40304",
             "Mobiledevices": '{"brand":"google","device":"emulator64_x86_64_arm64","deviceType":"sdk_gphone64_x86_64","os":"","os_version":"31","manufacturer":"Google"}',
-            "Timezone": "GMT",
             "Accept-Language": "en",
             "App_type": "SOFTWARE",
             "Connection": "keep-alive",
@@ -230,6 +252,7 @@ class SpeedianceClient:
             "App_user_id": self.credentials.get("user_id", ""),
             "Token": self.credentials.get("token", ""),
             "Timestamp": str(int(time.time() * 1000)),
+            **self._get_tz_headers(),
             "Versioncode": "40304",
             "Mobiledevices": '{"brand":"google","device":"emulator64_x86_64_arm64","deviceType":"sdk_gphone64_x86_64","os":"","os_version":"31","manufacturer":"Google"}',
             "Content-Type": "application/json",
@@ -452,6 +475,31 @@ class SpeedianceClient:
             print(f"Error scheduling workout: {e}")
             return False
 
+    def get_training_history(self, start_date, end_date):
+        """
+        Fetches the list of training records between two dates.
+        Dates should be in 'YYYY-MM-DD' format.
+        """
+        url = f"{self.base_url}/api/mobile/v2/report/userTrainingDataRecord?startDate={start_date}&endDate={end_date}"
+        try:
+            resp = self._request('GET', url, headers=self._get_headers())
+            return resp.json().get('data', [])
+        except Exception as e:
+            print(f"Error fetching history: {e}")
+            return []
+
+    def get_training_detail(self, training_id):
+        """
+        Fetches the full details (sets, reps, graphs) for a specific workout ID.
+        """
+        url = f"{self.base_url}/api/app/trainingInfo/cttTrainingInfoDetail/{training_id}"
+        try:
+            resp = self._request('GET', url, headers=self._get_headers())
+            return resp.json().get('data', {})
+        except Exception as e:
+            print(f"Error fetching training detail: {e}")
+            return {}
+
     def schedule_course(self, date_str, course_id, status):
         """
         Schedules or unschedules an official course.
@@ -504,7 +552,8 @@ class SpeedianceClient:
         for ex in exercises:
             group_id = int(ex['groupId'])
             sets = ex['sets']
-            preset_id = int(ex.get('preset_id', -1))
+            preset_id = int(ex.get('preset_id') or -1)
+            data_stat_type = int(ex.get('data_stat_type') or 0)
             
             is_unilateral = unilateral_check.get(group_id, False)
 
@@ -529,10 +578,10 @@ class SpeedianceClient:
             set_capacity = 0
 
             for i, s in enumerate(sets):
-                reps = int(s.get('reps', 0))
-                weight_val = float(s.get('weight', 0))
-                mode = int(s.get('mode', 1))
-                rest = int(s.get('rest', 60))
+                reps = int(s.get('reps') or 0)
+                weight_val = float(s.get('weight') or 0)
+                mode = int(s.get('mode') or 1)
+                rest = int(s.get('rest') or 60)
                 unit = str(s.get('unit', 'reps')).lower()
 
                 # Unilateral Logic
@@ -544,7 +593,12 @@ class SpeedianceClient:
                 reps_list.append(str(reps))
                 break_list.append(str(rest))
                 mode_list.append(str(mode))
-                level_list.append("0")
+
+                # Vita exercises (dataStatType==6): weight input = difficulty level (1-10)
+                if data_stat_type == 6:
+                    level_list.append(str(max(1, min(10, int(weight_val) or 1))))
+                else:
+                    level_list.append("0")
 
                 # Completion fields: required by API (observed in app payloads)
                 # - unit=='sec' => time-based completion
@@ -558,16 +612,17 @@ class SpeedianceClient:
                 completion_list.append("1")
 
                 # Weights vs counters
-                if preset_id == -1:
-                    api_weight = weight_val * 2.2
+                if data_stat_type == 6:
+                    # Vita: no cable weight, level already captured above
+                    weights_list.append("0")
+                elif preset_id == -1:
+                    api_weight = weight_val  # JS already converted LBS→KG before sending
                     weights_list.append(f"{api_weight:.1f}")
                     set_capacity += (reps * api_weight)
                 else:
                     # For presets, we MUST populate weights_list with dummy values (e.g. 3.5)
                     # AND populate counter_list with the RM value.
-                    # The API seems to drop counterweight2 if weights is empty or missing?
-                    # Or maybe it's just that we need to send weights even if unused.
-                    weights_list.append("3.5") 
+                    weights_list.append("3.5")
                     counter_list.append(str(int(weight_val)))
                     set_capacity += (reps * weight_val * 2.2)
 

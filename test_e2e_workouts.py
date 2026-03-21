@@ -220,7 +220,8 @@ class TestWorkoutE2E(unittest.TestCase):
             self.assertEqual(modes_saved, modes_expected)
             self.assertEqual(rest_saved, rest_expected)
 
-            # Weight mapping: for custom the API returns weights in KG (as strings/floats).
+            # Weight mapping: for custom exercises the API stores weights in the user's
+            # configured unit (LBS for imperial, KG for metric) — no conversion applied.
             self.assertEqual(saved_ex.get("counterweight2", ""), "")
             weights_saved = self._parse_csv_floats(saved_ex.get("weights", ""))
             weights_expected = [float(s["weight"]) for s in ex["sets"]]
