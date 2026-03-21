@@ -49,3 +49,26 @@ This fork may continue to function as long as the API remains accessible, but is
 ### Weight Unit Handling (Imperial / Metric)
 - **Accurate LBS storage** — weights entered in Imperial are stored and retrieved correctly without incorrect unit conversion being applied
 
+---
+
+## Running with Docker
+
+A `docker-compose.yml` template is included for running the app in a container.
+
+**Before starting**, edit the `volumes` path to point to the folder where you unzipped or cloned this repository:
+
+```yaml
+volumes:
+  - /path/to/your/app:/app
+```
+
+- **Windows example:** `/c/Users/yourname/Downloads/SmartGymWorkoutManager`
+- **Linux / Synology NAS example:** `/volume1/docker/smart-gym-app`
+
+Then run:
+
+```bash
+docker compose up -d
+```
+
+The app will be available at `http://localhost:5001`.
