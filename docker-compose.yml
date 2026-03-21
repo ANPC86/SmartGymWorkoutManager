@@ -7,6 +7,9 @@ services:
     ports:
       - "5001:5001"
     volumes:
+      # Set this to the folder where you unzipped / cloned the repository files.
+      # Example (Windows): /c/Users/yourname/Downloads/SmartGymWorkoutManager
+      # Example (Linux/NAS): /volume1/docker/smart-gym-app
       - /path/to/your/app:/app
     working_dir: /app
     environment:
