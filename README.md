@@ -1,4 +1,4 @@
-# Unofficial Speediance Workout Manager — Personal Fork
+# Unofficial SmartGym Workout Manager — Personal Fork
 
 > **This is a personal fork** of the original project by [hbui3](https://github.com/hbui3/UnofficialSpeedianceWorkoutManager).
 > All credit for the original work goes to him. This fork exists solely for personal use and testing of additional fixes and features.
@@ -8,7 +8,7 @@
 
 ## Notice from the Original Developer
 
-> This project is being discontinued as Speediance is implementing security upgrades to their API infrastructure. Official alternatives for custom template management and desktop workflows are currently under development by the Speediance team.
+> This project is being discontinued as Speediance is implementing security upgrades to their API infrastructure. Official alternatives for custom template management and desktop workflows are currently under development by the vendor's team.
 > Thank you to everyone who contributed feedback, ideas, and support.
 
 *— [hbui3](https://github.com/hbui3/UnofficialSpeedianceWorkoutManager)*
