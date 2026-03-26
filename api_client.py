@@ -224,8 +224,6 @@ class SpeedianceClient:
     def logout(self):
         url = f"{self.base_url}/api/app/login/logout"
         headers = self._get_headers()
-        headers["App_type"] = "SOFTWARE"
-        headers["User-Agent"] = "Dart/3.9 (dart:io)"
         
         try:
             self._request('POST', url, headers=headers)
@@ -254,6 +252,7 @@ class SpeedianceClient:
             "Timestamp": str(int(time.time() * 1000)),
             **self._get_tz_headers(),
             "Versioncode": "40304",
+            "App_type": "SOFTWARE",
             "Mobiledevices": '{"brand":"google","device":"emulator64_x86_64_arm64","deviceType":"sdk_gphone64_x86_64","os":"","os_version":"31","manufacturer":"Google"}',
             "Content-Type": "application/json",
             "User-Agent": "Dart/3.9 (dart:io)"
