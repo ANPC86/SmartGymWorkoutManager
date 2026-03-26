@@ -408,6 +408,10 @@
 
     // --- ADD EXERCISE ---
     async function addExerciseToPlan(groupId, title, img) {
+        if (workoutData.length >= 50) {
+            alert('Speediance limits custom workouts to 50 exercises. Remove one before adding another.');
+            return;
+        }
         groupId = parseInt(groupId, 10);
         const tempId = Date.now();
         try {
@@ -493,7 +497,9 @@
 
     function calculateWorkoutStats() {
         const exCount = workoutData.length;
-        document.getElementById('stat-exercises').innerText = `${exCount} Exercise${exCount !== 1 ? 's' : ''}`;
+        const exEl = document.getElementById('stat-exercises');
+        exEl.innerText = `${exCount} / 50 Exercise${exCount !== 1 ? 's' : ''}`;
+        exEl.className = exCount >= 50 ? 'text-red-400 font-semibold' : exCount >= 40 ? 'text-yellow-400' : '';
 
         let totalVolume = 0;
         let hasVolume = false;
