@@ -1,7 +1,7 @@
 # Unofficial SmartGym Workout Manager — Personal Fork
 
 > **This is a personal fork** of the original project by [hbui3](https://github.com/hbui3/UnofficialSpeedianceWorkoutManager).
-> All credit for the original work goes to him. This fork exists solely for personal use and testing of additional fixes and features.
+> All credit for the original work goes to hbui3. This fork exists solely for personal use and testing of additional fixes and features.
 > There is no intention to take credit for or create confusion with the original project.
 
 ---
