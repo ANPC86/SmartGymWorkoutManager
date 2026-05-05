@@ -3,8 +3,13 @@
 {% block content %}
 <div class="container mx-auto max-w-6xl">
     
-    <h1 class="text-3xl font-bold text-white mb-2">Training History</h1>
-    <p class="text-gray-400 text-sm mb-6">View past workouts and export data for analysis.</p>
+    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-white mb-2">Training History</h1>
+            <p class="text-gray-400 text-sm">View past workouts and export data for analysis.</p>
+        </div>
+        <a href="/history" class="self-start bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition text-sm">Listing View</a>
+    </div>
 
     <!-- Calendar Section -->
     <div class="mb-8">

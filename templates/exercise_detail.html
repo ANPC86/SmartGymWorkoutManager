@@ -142,6 +142,57 @@
                     </div>
                 </div>
 
+                <div class="mt-6 rounded-lg border border-gray-700 bg-gray-900 overflow-hidden">
+                    <button type="button" onclick="toggleExerciseStats()" class="w-full flex items-center justify-between gap-3 p-3 text-left hover:bg-gray-800 transition">
+                        <span class="flex items-center gap-2 text-white font-bold">
+                            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                            View Stats
+                        </span>
+                        <svg id="exercise-stats-chevron" class="w-4 h-4 text-gray-400 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+
+                    <div id="exercise-stats-panel" class="border-t border-gray-700 p-4">
+                        <div id="exercise-stats-loading" class="text-sm text-gray-500 py-2">Loading stats...</div>
+                        <div id="exercise-stats-empty" class="hidden text-sm text-gray-500 py-2">No history found for this exercise.</div>
+                        <div id="exercise-stats-content" class="hidden space-y-4">
+                            <div>
+                                <p class="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">Personal Record</p>
+                                <div class="grid grid-cols-3 gap-2 text-center">
+                                    <div class="bg-gray-800 rounded p-2">
+                                        <p class="text-[11px] text-gray-500 uppercase">1RM Est.</p>
+                                        <p id="pr-one-rep-max" class="text-lg font-bold text-green-400">-</p>
+                                    </div>
+                                    <div class="bg-gray-800 rounded p-2">
+                                        <p class="text-[11px] text-gray-500 uppercase">Max Wt.</p>
+                                        <p id="pr-max-weight" class="text-lg font-bold text-blue-400">-</p>
+                                    </div>
+                                    <div class="bg-gray-800 rounded p-2">
+                                        <p class="text-[11px] text-gray-500 uppercase">Volume</p>
+                                        <p id="pr-volume" class="text-lg font-bold text-orange-400">-</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <p class="text-xs text-gray-500 uppercase font-bold tracking-wider mb-2">Recent History</p>
+                                <div class="max-h-56 overflow-y-auto rounded border border-gray-800">
+                                    <table class="w-full text-left text-xs">
+                                        <thead class="bg-gray-800 text-gray-400 uppercase sticky top-0">
+                                            <tr>
+                                                <th class="p-2">Date</th>
+                                                <th class="p-2 text-right">1RM</th>
+                                                <th class="p-2 text-right">Wt.</th>
+                                                <th class="p-2 text-right">Vol.</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="exercise-stats-table" class="divide-y divide-gray-800 text-gray-300"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mt-8">
                     <h3 class="text-xs font-bold text-gray-500 uppercase mb-3 tracking-wider">Target Muscles</h3>
                     <div class="flex flex-wrap gap-2">
@@ -211,6 +262,89 @@
 </div>
 
 <script>
+    const exerciseId = {{ ex_id }};
+
+    const formatStat = (value, decimals = 1) => {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return '-';
+        return number.toLocaleString(undefined, {
+            maximumFractionDigits: decimals,
+            minimumFractionDigits: number % 1 === 0 ? 0 : decimals
+        });
+    };
+
+    const formatStatDate = (value) => {
+        if (!value) return '-';
+        const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (match) return `${match[1].slice(2)}-${match[2]}-${match[3]}`;
+        return String(value);
+    };
+
+    const getExerciseStatsRows = (json) => {
+        if (!json || !json.data) return [];
+        if (Array.isArray(json.data)) return json.data;
+        if (Array.isArray(json.data.records)) return json.data.records;
+        if (Array.isArray(json.data.list)) return json.data.list;
+        return [];
+    };
+
+    const bestBy = (rows, key) => rows.reduce((best, row) => {
+        const current = Number(row[key]);
+        const previous = best ? Number(best[key]) : -Infinity;
+        return Number.isFinite(current) && current > previous ? row : best;
+    }, null);
+
+    async function loadExerciseStats() {
+        const loading = document.getElementById('exercise-stats-loading');
+        const empty = document.getElementById('exercise-stats-empty');
+        const content = document.getElementById('exercise-stats-content');
+        const tbody = document.getElementById('exercise-stats-table');
+
+        try {
+            const res = await fetch(`/api/stats/${exerciseId}`);
+            const json = await res.json();
+            const rows = getExerciseStatsRows(json);
+
+            loading.classList.add('hidden');
+
+            if (!rows.length) {
+                empty.classList.remove('hidden');
+                return;
+            }
+
+            const oneRepMaxPr = bestBy(rows, 'oneRepMax');
+            const maxWeightPr = bestBy(rows, 'maxWeight');
+            const volumePr = bestBy(rows, 'totalCapacity');
+
+            document.getElementById('pr-one-rep-max').textContent = formatStat(oneRepMaxPr?.oneRepMax);
+            document.getElementById('pr-max-weight').textContent = formatStat(maxWeightPr?.maxWeight);
+            document.getElementById('pr-volume').textContent = formatStat(volumePr?.totalCapacity, 0);
+
+            tbody.innerHTML = rows.map(item => `
+                <tr class="hover:bg-gray-800/70">
+                    <td class="p-2 whitespace-nowrap">${formatStatDate(item.dayStr)}</td>
+                    <td class="p-2 text-right font-bold text-green-400">${formatStat(item.oneRepMax)}</td>
+                    <td class="p-2 text-right text-white">${formatStat(item.maxWeight)}</td>
+                    <td class="p-2 text-right text-gray-400">${formatStat(item.totalCapacity, 0)}</td>
+                </tr>
+            `).join('');
+
+            content.classList.remove('hidden');
+        } catch (e) {
+            loading.classList.add('hidden');
+            empty.textContent = 'Error loading stats.';
+            empty.classList.remove('hidden');
+            console.error(e);
+        }
+    }
+
+    function toggleExerciseStats() {
+        const panel = document.getElementById('exercise-stats-panel');
+        const chevron = document.getElementById('exercise-stats-chevron');
+        panel.classList.toggle('hidden');
+        chevron.classList.toggle('rotate-180');
+    }
+
     function openModal(src) {
         const modal = document.getElementById('image-modal');
         const img = document.getElementById('modal-img');
@@ -252,5 +386,7 @@
         btn.classList.remove('border-gray-600');
         btn.classList.add('border-green-500');
     }
+
+    loadExerciseStats();
 </script>
 {% endblock %}

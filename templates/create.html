@@ -247,6 +247,7 @@
     const existingData = {{ existing_workout | default(None) | tojson | safe }};
     const fullLibrary = {{ library | tojson | safe }};
     let currentTemplateId = existingData ? existingData.id : null;
+    const exerciseStatsCache = new Map();
 
     document.addEventListener('DOMContentLoaded', async () => {
         // Search & Filter Logic
@@ -495,6 +496,113 @@
         return null;                                 // unknown — use set.unit toggle
     }
 
+    function shouldLoadLastMaxWeight(ex) {
+        const unit = getSetGoalUnit(ex);
+        return ex.dataStatType !== 6 && unit !== 'sec' && unit !== 'kcal';
+    }
+
+    function getStatsRows(json) {
+        if (!json || !json.data) return [];
+        if (Array.isArray(json.data)) return json.data;
+        if (Array.isArray(json.data.records)) return json.data.records;
+        if (Array.isArray(json.data.list)) return json.data.list;
+        return [];
+    }
+
+    function getLatestStatsRow(rows) {
+        return rows.reduce((latest, row) => {
+            if (!latest) return row;
+            const currentTime = Date.parse(row.dayStr || '');
+            const latestTime = Date.parse(latest.dayStr || '');
+            if (Number.isFinite(currentTime) && (!Number.isFinite(latestTime) || currentTime > latestTime)) return row;
+            return latest;
+        }, null);
+    }
+
+    function getLastMaxWeightFromStats(json) {
+        const latest = getLatestStatsRow(getStatsRows(json));
+        const maxWeight = Number(latest?.maxWeight);
+        return Number.isFinite(maxWeight) && maxWeight > 0 ? maxWeight : null;
+    }
+
+    function formatLastMaxWeight(maxWeight) {
+        const displayWeight = userUnit === 1 ? kgToLbs(maxWeight) : Math.round(maxWeight * 2) / 2;
+        const unitLabel = userUnit === 1 ? 'lb' : 'kg';
+        return `${displayWeight.toLocaleString()} ${unitLabel}`;
+    }
+
+    function lastMaxWeightElementId(ex) {
+        return `last-max-${String(ex.internalId).replace(/[^A-Za-z0-9_-]/g, '_')}`;
+    }
+
+    function buildLastMaxWeightHtml(ex) {
+        if (!shouldLoadLastMaxWeight(ex)) return '';
+
+        if (ex.lastMaxWeightStatus === 'loaded' && ex.lastMaxWeight) {
+            return `<span id="${lastMaxWeightElementId(ex)}" class="bg-yellow-600/20 text-yellow-300 border border-yellow-500/30 px-2 py-0.5 rounded text-xs font-mono font-bold">Last Max Wt.: ${formatLastMaxWeight(ex.lastMaxWeight)}</span>`;
+        }
+
+        if (ex.lastMaxWeightStatus === 'none' || ex.lastMaxWeightStatus === 'error') return '';
+
+        return `<span id="${lastMaxWeightElementId(ex)}" class="bg-gray-700/60 text-gray-400 border border-gray-600 px-2 py-0.5 rounded text-xs font-mono animate-pulse">Last Max Wt.: ...</span>`;
+    }
+
+    function applyStatsSummaryToExercise(ex, summary) {
+        ex.lastMaxWeightStatus = summary.status;
+        ex.lastMaxWeight = summary.lastMaxWeight;
+    }
+
+    function summarizeStats(json) {
+        const lastMaxWeight = getLastMaxWeightFromStats(json);
+        return lastMaxWeight ? { status: 'loaded', lastMaxWeight } : { status: 'none', lastMaxWeight: null };
+    }
+
+    function updateLastMaxWeightChip(ex) {
+        const chip = document.getElementById(lastMaxWeightElementId(ex));
+        if (!chip) return;
+        const html = buildLastMaxWeightHtml(ex);
+        if (html) {
+            chip.outerHTML = html;
+        } else {
+            chip.remove();
+        }
+    }
+
+    function applyStatsSummaryToMatchingExercises(groupId, summary) {
+        workoutData.forEach(ex => {
+            if (ex.groupId !== groupId) return;
+            applyStatsSummaryToExercise(ex, summary);
+            updateLastMaxWeightChip(ex);
+        });
+    }
+
+    async function ensureLastMaxWeight(ex) {
+        if (!shouldLoadLastMaxWeight(ex) || ex.lastMaxWeightStatus === 'loaded' || ex.lastMaxWeightStatus === 'none' || ex.lastMaxWeightStatus === 'loading') return;
+
+        const cached = exerciseStatsCache.get(ex.groupId);
+        if (cached) {
+            applyStatsSummaryToExercise(ex, cached);
+            updateLastMaxWeightChip(ex);
+            return;
+        }
+
+        ex.lastMaxWeightStatus = 'loading';
+        updateLastMaxWeightChip(ex);
+
+        try {
+            const res = await fetch(`/api/stats/${ex.groupId}`);
+            const json = await res.json();
+            const summary = summarizeStats(json);
+            exerciseStatsCache.set(ex.groupId, summary);
+            applyStatsSummaryToMatchingExercises(ex.groupId, summary);
+        } catch (e) {
+            const summary = { status: 'error', lastMaxWeight: null };
+            exerciseStatsCache.set(ex.groupId, summary);
+            applyStatsSummaryToMatchingExercises(ex.groupId, summary);
+            console.error(e);
+        }
+    }
+
     function calculateWorkoutStats() {
         const exCount = workoutData.length;
         const exEl = document.getElementById('stat-exercises');
@@ -732,6 +840,7 @@
             const presetsHtml = buildPresetsHtml(ex);
 
             const unilateralWarning = ex.isUnilateral ? `<p class="text-xs text-yellow-400 mt-1">Unilateral: L/R Sets</p>` : '';
+            const lastMaxWeightHtml = buildLastMaxWeightHtml(ex);
 
             // Format cable position display
             let cablePositionHtml = '';
@@ -781,6 +890,7 @@
                             <select onchange="updateEx(${exIndex}, 'selectedVariantId', this.value)" class="bg-gray-900 text-xs text-white border border-gray-600 rounded p-1 max-w-[150px]">${variantsHtml}</select>
                             <select onchange="updateEx(${exIndex}, 'selectedPresetId', this.value)" class="bg-gray-900 text-xs text-green-400 border border-gray-600 rounded p-1 font-bold">${presetsHtml}</select>
                             ${cablePositionHtml}
+                            ${lastMaxWeightHtml}
                         </div>
                         ${unilateralWarning}
                     </div>
@@ -869,6 +979,7 @@
                 </div>
             `;
             container.appendChild(card);
+            ensureLastMaxWeight(ex);
         });
     }
 
@@ -1324,11 +1435,15 @@ You must output a JSON object with the following structure:
         try {
             const res = await fetch(`/api/stats/${groupId}`);
             const json = await res.json();
+            const numericGroupId = parseInt(groupId, 10);
+            const summary = summarizeStats(json);
+            exerciseStatsCache.set(numericGroupId, summary);
+            applyStatsSummaryToMatchingExercises(numericGroupId, summary);
 
             loading.classList.add('hidden');
 
-            if (json && json.data && json.data.length > 0) {
-                const history = json.data;
+            const history = getStatsRows(json);
+            if (history.length > 0) {
                 
                 let html = '';
                 history.forEach(item => {
