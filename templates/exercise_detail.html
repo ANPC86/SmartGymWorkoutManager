@@ -277,7 +277,7 @@
     const formatWeightStat = (value) => {
         const number = Number(value);
         if (!Number.isFinite(number)) return '-';
-        const displayWeight = userUnit === 1 ? Math.round(number * 2.2) : Math.round(number * 2) / 2;
+        const displayWeight = userUnit === 1 ? Math.round(number) : Math.round(number * 2) / 2;
         const unitLabel = userUnit === 1 ? 'lb' : 'kg';
         return `${displayWeight.toLocaleString()} ${unitLabel}`;
     };

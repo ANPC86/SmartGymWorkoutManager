@@ -526,7 +526,7 @@
     }
 
     function formatLastMaxWeight(maxWeight) {
-        const displayWeight = userUnit === 1 ? kgToLbs(maxWeight) : Math.round(maxWeight * 2) / 2;
+        const displayWeight = userUnit === 1 ? Math.round(maxWeight) : Math.round(maxWeight * 2) / 2;
         const unitLabel = userUnit === 1 ? 'lb' : 'kg';
         return `${displayWeight.toLocaleString()} ${unitLabel}`;
     }
