@@ -279,14 +279,20 @@
         const session = data.session || {};
         const exercises = Array.isArray(data.detail) ? data.detail : [];
 
+        // The summary record is the canonical source for header totals. The
+        // detail session endpoint can return exercise-only or partial totals.
+        const duration = rec.trainingTime ?? session.trainingTime;
+        const calories = rec.calorie ?? session.calorie;
+        const volume = rec.totalCapacity ?? session.totalCapacity;
+
         // Session stats
         const statsEl = document.getElementById('detailStats');
         statsEl.classList.remove('hidden');
-        document.getElementById('detailDuration').textContent = fmtSeconds(session.trainingTime || rec.trainingTime);
-        document.getElementById('detailCalories').textContent = (session.calorie || rec.calorie)
-            ? `${Math.round(session.calorie || rec.calorie)} kcal` : '-';
-        document.getElementById('detailVolume').textContent = (session.totalCapacity || rec.totalCapacity)
-            ? `${Math.round(session.totalCapacity || rec.totalCapacity).toLocaleString()} ${unitLabel}` : '-';
+        document.getElementById('detailDuration').textContent = fmtSeconds(duration);
+        document.getElementById('detailCalories').textContent = calories
+            ? `${Math.round(calories)} kcal` : '-';
+        document.getElementById('detailVolume').textContent = volume
+            ? `${Math.round(volume).toLocaleString()} ${unitLabel}` : '-';
 
         const container = document.getElementById('detailExercises');
 
