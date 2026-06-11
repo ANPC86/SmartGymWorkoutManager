@@ -360,7 +360,9 @@
             
             const setsParsed = reps.map((rep, i) => {
                 let w = 0;
-                const presetId = parseInt(apiEx.templatePresetId) || -1;
+                const presetId = apiEx.templatePresetId !== undefined && apiEx.templatePresetId !== null
+                    ? parseInt(apiEx.templatePresetId)
+                    : -1;
                 const isRM = presetId !== -1;
                 
                 if (isRM) {
@@ -393,7 +395,9 @@
                 variants: meta.variants,
                 presets: meta.presets,
                 selectedVariantId: parseInt(apiEx.actionLibraryId),
-                selectedPresetId: parseInt(apiEx.templatePresetId) || -1,
+                selectedPresetId: apiEx.templatePresetId !== undefined && apiEx.templatePresetId !== null
+                    ? parseInt(apiEx.templatePresetId)
+                    : -1,
                 sets: setsParsed,
                 cablePosition: meta.cablePosition,
                 completionMethod: meta.completionMethod,

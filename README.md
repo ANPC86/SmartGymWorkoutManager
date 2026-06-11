@@ -21,6 +21,11 @@ This fork may continue to function as long as the API remains accessible, but is
 
 ## Changes & Features in This Fork
 
+### Latest Release
+- **History detail totals fixed** - workout detail headers now use the same duration, calories, and volume shown in the history listing
+- **Preset saving fixed** - preset ID `0` is preserved when saving and editing workouts, preventing Warm Up-style presets from being saved as Customize
+- **Preset regression coverage** - unit coverage now verifies preset IDs `-1`, `0`, `1`, `3`, and `5` pass through to the Speediance payload correctly
+
 ### Workout Builder Enhancements
 - **Live stats bar** — shows total exercises, estimated volume, total time, and rest time as you build
 - **Move to top / bottom buttons** — quickly reorder exercises without repeated dragging
