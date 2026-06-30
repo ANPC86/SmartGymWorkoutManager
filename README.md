@@ -1,21 +1,28 @@
-# Unofficial SmartGym Workout Manager — Personal Fork
+# Smart Gym Workout Manager
 
-> **This is a personal fork** of the original project by [hbui3](https://github.com/hbui3/UnofficialSpeedianceWorkoutManager).
-> All credit for the original work goes to hbui3. This fork exists solely for personal use and testing of additional fixes and features.
-> There is no intention to take credit for or create confusion with the original project.
+Custom workout builder and history tools for SmartGym / Speediance-style training workflows.
 
 ---
 
-## Notice from the Original Developer
+## Credits
 
-> This project is being discontinued as Speediance is implementing security upgrades to their API infrastructure. Official alternatives for custom template management and desktop workflows are currently under development by the vendor's team.
-> Thank you to everyone who contributed feedback, ideas, and support.
+Originally based on [Unofficial Speediance Workout Manager](https://github.com/hbui3/UnofficialSpeedianceWorkoutManager) by [hbui3](https://github.com/hbui3).
 
-*— [hbui3](https://github.com/hbui3/UnofficialSpeedianceWorkoutManager)*
+This project has since been substantially modified for personal SmartGym workout management, workout building, history analysis, exports, and metric/unit handling.
 
 ---
 
-This fork may continue to function as long as the API remains accessible, but is subject to the same limitations described above. Use at your own risk.
+This project may continue to function as long as the API remains accessible, but is subject to the same limitations described above. Use at your own risk.
+
+---
+
+## Support
+
+If this project helps you, sponsorship is appreciated but never required.
+
+<a href="https://www.buymeacoffee.com/ANPCAI" target="_blank">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me A Coffee" width="180">
+</a>
 
 ---
 

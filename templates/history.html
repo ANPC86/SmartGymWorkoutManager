@@ -151,6 +151,15 @@
         return Number.isInteger(val) ? val : val.toFixed(1);
     }
 
+    function addWorkoutNameToDetailPayload(rec, data) {
+        const name = rec?.title || data?.session?.title || data?.session?.name || 'Workout';
+        return { name, summary: addWorkoutNameToSummary(rec), detail: data };
+    }
+
+    function addWorkoutNameToSummary(rec) {
+        return { ...rec, name: rec?.title || rec?.name || 'Workout' };
+    }
+
     async function fetchHistory() {
         const start = document.getElementById('startDate').value;
         const end = document.getElementById('endDate').value;
@@ -265,7 +274,7 @@
         try {
             const resp = await fetch(`/api/history/detail/${rec.trainingId}?type=${apiType}`);
             const data = await resp.json();
-            currentDetailPayload = { summary: rec, detail: data };
+            currentDetailPayload = addWorkoutNameToDetailPayload(rec, data);
             document.getElementById('detailFooter').classList.remove('hidden');
             document.getElementById('detailLoading').classList.add('hidden');
             renderDetail(data, rec);
@@ -478,9 +487,14 @@
             try {
                 const resp = await fetch(`/api/history/detail/${rec.trainingId}?type=${apiType}`);
                 const detail = await resp.json();
-                fullDataset.push({ summary: rec, detail });
+                fullDataset.push(addWorkoutNameToDetailPayload(rec, detail));
             } catch (e) {
-                fullDataset.push({ summary: rec, detail: null, error: e.message });
+                fullDataset.push({
+                    name: rec.title || rec.name || 'Workout',
+                    summary: addWorkoutNameToSummary(rec),
+                    detail: null,
+                    error: e.message
+                });
             }
             await new Promise(r => setTimeout(r, 50));
         }
@@ -515,7 +529,7 @@
                 end: document.getElementById('endDate').value
             },
             stats: historyData.stats,
-            records: historyData.records
+            records: historyData.records.map(addWorkoutNameToSummary)
         };
         const jsonStr = JSON.stringify(exportObj, null, 2);
         const blob = new Blob([jsonStr], { type: 'application/json' });

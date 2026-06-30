@@ -852,10 +852,10 @@ def start_gui():
         run_flask_server()
         return
     root = tk.Tk()
-    root.title("Unofficial Speediance Workout Manager Server")
+    root.title("Smart Gym Workout Manager Server")
     root.geometry("700x500")
     
-    lbl = tk.Label(root, text="Unofficial Speediance Workout Manager is running.\nDo not close this window while using the app.", font=("Arial", 10), pady=10)
+    lbl = tk.Label(root, text="Smart Gym Workout Manager is running.\nDo not close this window while using the app.", font=("Arial", 10), pady=10)
     lbl.pack()
 
     btn_frame = tk.Frame(root)
