@@ -130,16 +130,21 @@
 
     <!-- Workout Details Modal -->
     <div id="workout-details-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onclick="closeWorkoutModal(event)">
-        <div class="bg-gray-800 rounded-lg border border-gray-600 shadow-2xl max-w-lg w-full mx-4" onclick="event.stopPropagation()">
-            <div class="p-6">
-                <h3 class="text-xl font-bold text-white mb-4">Workout Details</h3>
+        <div class="bg-gray-800 rounded-lg border border-gray-600 shadow-2xl max-w-5xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onclick="event.stopPropagation()">
+            <div class="p-6 overflow-y-auto">
+                <div class="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                        <h3 id="modal-workout-title" class="text-xl font-bold text-white">Workout Details</h3>
+                        <p id="modal-workout-subtitle" class="text-sm text-gray-400"></p>
+                    </div>
+                    <button onclick="closeWorkoutModal()" class="text-gray-400 hover:text-white px-3 py-1 rounded transition">
+                        Close
+                    </button>
+                </div>
                 <div id="modal-workout-details" class="text-gray-300 space-y-2 mb-6 font-mono text-sm">
                     <!-- Details will be injected here -->
                 </div>
                 <div class="flex gap-3 justify-end">
-                    <button onclick="closeWorkoutModal()" class="text-gray-400 hover:text-white px-4 py-2 rounded transition">
-                        Close
-                    </button>
                     <button id="modal-copy-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-bold flex items-center gap-2 shadow-lg transition">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
                         Copy JSON
@@ -316,6 +321,9 @@
                 <td class="px-6 py-4 text-center text-gray-300">${durationMin} min</td>
                 <td class="px-6 py-4 text-right">
                     <div class="flex gap-2 justify-end">
+                        <button onclick="showWorkoutDetailsById('${exportId}', '${type}')" class="text-yellow-400 hover:text-white text-xs font-bold border border-yellow-900/50 hover:border-yellow-500 bg-yellow-900/20 px-3 py-1 rounded transition">
+                            View
+                        </button>
                         <button onclick="downloadDetail('${exportId}', '${type}')" class="text-green-400 hover:text-white text-xs font-bold border border-green-900/50 hover:border-green-500 bg-green-900/20 px-3 py-1 rounded transition">
                             Download
                         </button>
@@ -346,6 +354,191 @@
 
     function addWorkoutNameToSummary(summary) {
         return { ...summary, name: summary?.title || summary?.name || 'Workout' };
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, ch => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[ch]));
+    }
+
+    function fmtSeconds(sec) {
+        if (!sec && sec !== 0) return '-';
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        if (h > 0) return `${h}h ${m}m`;
+        if (m > 0) return `${m}m ${s}s`;
+        return `${s}s`;
+    }
+
+    function fmtValue(value) {
+        if (value == null || value === '') return '-';
+        return Number.isInteger(value) ? value : Number(value).toFixed ? Number(value).toFixed(1) : value;
+    }
+
+    function findExerciseArray(payload) {
+        const seen = new Set();
+        const queue = [payload];
+
+        while (queue.length) {
+            const item = queue.shift();
+            if (!item || typeof item !== 'object' || seen.has(item)) continue;
+            seen.add(item);
+
+            if (Array.isArray(item)) {
+                if (item.some(entry => entry && typeof entry === 'object' && (
+                    'actionRating' in entry ||
+                    'finishedReps' in entry ||
+                    'actionLibraryName' in entry ||
+                    'actionLibraryGroupId' in entry
+                ))) {
+                    return item;
+                }
+                item.forEach(child => queue.push(child));
+            } else {
+                Object.values(item).forEach(child => {
+                    if (child && typeof child === 'object') queue.push(child);
+                });
+            }
+        }
+
+        return [];
+    }
+
+    function buildRatingHtml(ex) {
+        if (!Object.prototype.hasOwnProperty.call(ex, 'actionRating')) {
+            return '<span class="text-red-400 text-xs font-bold">score missing: actionRating absent</span>';
+        }
+
+        const rating = ex.actionRating;
+        if (rating == null || rating === '') {
+            return '<span class="text-red-400 text-xs font-bold">score missing: null/blank</span>';
+        }
+
+        const numericRating = Number(rating);
+        if (!Number.isFinite(numericRating) || numericRating <= 0) {
+            return `<span class="text-yellow-300 text-xs font-bold">score value: ${escapeHtml(rating)}</span>`;
+        }
+
+        return `<span class="text-yellow-400 text-xs">${'★'.repeat(Math.min(numericRating, 5))}${'☆'.repeat(Math.max(0, 5 - numericRating))}</span>
+            <span class="text-gray-500 text-xs">actionRating: ${escapeHtml(rating)}</span>`;
+    }
+
+    function renderSetRows(sets, isTimer, isUnilateral) {
+        if (!sets.length) {
+            return '<div class="px-3 pb-3 text-xs text-gray-500">No finishedReps array items returned for this exercise.</div>';
+        }
+
+        const rows = sets.map((set, index) => {
+            const detail = set.trainingInfoDetail || {};
+            const side = isUnilateral && set.leftRight === 1 ? 'L' : isUnilateral && set.leftRight === 2 ? 'R' : '';
+            const weightArrays = [
+                detail.weights,
+                detail.leftWeights,
+                detail.rightWeights
+            ].filter(arr => Array.isArray(arr) && arr.length);
+            const weightSummary = weightArrays.length
+                ? weightArrays.map(arr => `${fmtValue(arr[0])}${arr.length > 1 ? ` -> ${fmtValue(arr[arr.length - 1])}` : ''}`).join(' | ')
+                : '-';
+
+            return `
+                <tr class="border-t border-gray-800">
+                    <td class="py-1 pr-2 text-gray-500">${side}${index + 1}</td>
+                    <td class="py-1 pr-2">${isTimer ? fmtSeconds(set.targetCount || set.time || 0) : `${set.finishedCount ?? '-'} / ${set.targetCount ?? '-'}`}</td>
+                    <td class="py-1 pr-2">${set.capacity != null ? Math.round(set.capacity).toLocaleString() : '-'}</td>
+                    <td class="py-1 pr-2">${escapeHtml(weightSummary)}</td>
+                    <td class="py-1 text-gray-500">${Object.keys(detail).length ? escapeHtml(Object.keys(detail).join(', ')) : '-'}</td>
+                </tr>`;
+        }).join('');
+
+        return `
+            <div class="px-3 pb-3 overflow-x-auto">
+                <table class="w-full text-xs">
+                    <thead class="text-[10px] uppercase text-gray-500">
+                        <tr>
+                            <th class="py-1 pr-2 text-left">#</th>
+                            <th class="py-1 pr-2 text-left">${isTimer ? 'Duration' : 'Reps'}</th>
+                            <th class="py-1 pr-2 text-left">Volume</th>
+                            <th class="py-1 pr-2 text-left">Weights</th>
+                            <th class="py-1 text-left">trainingInfoDetail keys</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+    }
+
+    function renderDetailPayload(workout, payload) {
+        const exercises = findExerciseArray(payload);
+        const responseData = payload?.data || payload;
+        const summary = addWorkoutNameToSummary(workout);
+        const rawJson = escapeHtml(JSON.stringify(addWorkoutNameToDetail(payload, workout), null, 2));
+
+        const exerciseHtml = exercises.length ? exercises.map((ex, index) => {
+            const sets = Array.isArray(ex.finishedReps) ? ex.finishedReps : [];
+            const isTimer = ex.completionMethod === 0;
+            const isUnilateral = ex.isLeftRight === 1;
+            const ratingHtml = buildRatingHtml(ex);
+            const rawKeys = Object.keys(ex || {}).sort().join(', ');
+
+            return `
+                <div class="bg-gray-900 rounded border border-gray-700 overflow-hidden">
+                    <div class="p-3 border-b border-gray-700/60">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="text-white font-bold">${index + 1}. ${escapeHtml(ex.actionLibraryName || ex.name || 'Exercise')}</div>
+                            <div class="flex items-center gap-2">${ratingHtml}</div>
+                        </div>
+                        <div class="mt-1 flex flex-wrap gap-3 text-xs text-gray-400">
+                            <span>groupId: ${escapeHtml(ex.actionLibraryGroupId ?? '-')}</span>
+                            <span>sets: ${sets.length}</span>
+                            <span>completionMethod: ${escapeHtml(ex.completionMethod ?? '-')}</span>
+                            <span>isLeftRight: ${escapeHtml(ex.isLeftRight ?? '-')}</span>
+                            <span>maxWeight: ${escapeHtml(ex.maxWeight ?? '-')}</span>
+                            <span>totalCapacity: ${escapeHtml(ex.totalCapacity ?? '-')}</span>
+                        </div>
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-xs text-blue-300 hover:text-blue-200">Exercise JSON keys</summary>
+                            <div class="mt-1 text-[11px] text-gray-500 break-words">${escapeHtml(rawKeys || '-')}</div>
+                        </details>
+                    </div>
+                    ${renderSetRows(sets, isTimer, isUnilateral)}
+                </div>`;
+        }).join('') : `
+            <div class="bg-gray-900 rounded border border-gray-700 p-4 text-gray-500">
+                No exercise array was detected in this response. Use the raw JSON below to inspect the returned shape.
+            </div>`;
+
+        document.getElementById('modal-workout-title').textContent = workout.title || 'Workout Details';
+        document.getElementById('modal-workout-subtitle').textContent = `Training ID ${workout.trainingId || '-'} · Type ${workout.type ?? '-'}`;
+        document.getElementById('modal-workout-details').innerHTML = `
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 font-sans">
+                <div class="bg-gray-900 rounded p-3">
+                    <div class="text-xs text-gray-500 uppercase">Duration</div>
+                    <div class="text-white font-bold">${Math.round((summary.trainingTime || 0) / 60)} min</div>
+                </div>
+                <div class="bg-gray-900 rounded p-3">
+                    <div class="text-xs text-gray-500 uppercase">Volume</div>
+                    <div class="text-white font-bold">${escapeHtml(summary.totalCapacity ?? 0)}</div>
+                </div>
+                <div class="bg-gray-900 rounded p-3">
+                    <div class="text-xs text-gray-500 uppercase">Response Code</div>
+                    <div class="text-white font-bold">${escapeHtml(payload?.code ?? responseData?.code ?? '-')}</div>
+                </div>
+                <div class="bg-gray-900 rounded p-3">
+                    <div class="text-xs text-gray-500 uppercase">Exercises Found</div>
+                    <div class="text-white font-bold">${exercises.length}</div>
+                </div>
+            </div>
+            <div class="space-y-3 font-sans">${exerciseHtml}</div>
+            <details class="bg-gray-950 rounded border border-gray-700 p-3" open>
+                <summary class="cursor-pointer text-sm text-green-300 font-bold">Raw detail JSON returned by /api/workout_history/detail</summary>
+                <pre class="mt-3 max-h-96 overflow-auto text-xs text-green-300 whitespace-pre-wrap break-words">${rawJson}</pre>
+            </details>`;
     }
 
     // 2. Fetch Single Detail and Copy
@@ -749,7 +942,12 @@
         btn.classList.remove('opacity-50', 'cursor-not-allowed');
     }
 
-    function showWorkoutDetails(workout) {
+    function showWorkoutDetailsById(id, type) {
+        const workout = findHistoryRecord(id) || { trainingId: id, type: Number(type), title: 'Workout' };
+        showWorkoutDetails(workout);
+    }
+
+    async function showWorkoutDetails(workout) {
         const dateObj = new Date((workout.endTimestamp || workout.startTimestamp) * 1000);
         const dateStr = dateObj.toLocaleString(undefined, {
             year: 'numeric', month: 'long', day: 'numeric',
@@ -757,16 +955,19 @@
         });
         const durationMin = Math.round((workout.trainingTime || 0) / 60);
 
-        // Populate modal details
+        document.getElementById('modal-workout-title').textContent = workout.title || 'Workout Details';
+        document.getElementById('modal-workout-subtitle').textContent = `${dateStr} · Training ID ${workout.trainingId || '-'}`;
+
+        // Populate modal details immediately with summary data while detail JSON loads.
         const detailsContainer = document.getElementById('modal-workout-details');
         detailsContainer.innerHTML = `
             <div class="border-b border-gray-700 pb-2 mb-2">
                 <div class="text-xs text-gray-500 uppercase">Title</div>
-                <div class="text-white font-bold">${workout.title || 'Unknown'}</div>
+                <div class="text-white font-bold">${escapeHtml(workout.title || 'Unknown')}</div>
             </div>
             <div class="border-b border-gray-700 pb-2 mb-2">
                 <div class="text-xs text-gray-500 uppercase">Date</div>
-                <div>${dateStr}</div>
+                <div>${escapeHtml(dateStr)}</div>
             </div>
             <div class="grid grid-cols-2 gap-4 border-b border-gray-700 pb-2 mb-2">
                 <div>
@@ -788,6 +989,9 @@
                     <div class="text-xs">${workout.trainingId}</div>
                 </div>
             </div>
+            <div class="bg-gray-900 rounded border border-gray-700 p-4 text-blue-300 font-sans">
+                Fetching full detail JSON...
+            </div>
         `;
 
         // Set up button handlers
@@ -803,6 +1007,17 @@
 
         // Show modal
         document.getElementById('workout-details-modal').classList.remove('hidden');
+
+        try {
+            const res = await fetch(`/api/workout_history/detail/${workout.trainingId}?type=${workout.type}`);
+            const data = await res.json();
+            renderDetailPayload(workout, data);
+        } catch (e) {
+            detailsContainer.innerHTML += `
+                <div class="bg-red-950/40 border border-red-800 rounded p-3 text-red-300 font-sans">
+                    Failed to fetch full detail JSON: ${escapeHtml(e.message || e)}
+                </div>`;
+        }
     }
 
     function closeWorkoutModal(event) {
